@@ -55,8 +55,8 @@ export function NotificationBell() {
               {items.map((n) => (
                 <li key={n.id}>
                   <Link to={n.link ?? '#'} onClick={() => setOpen(false)} className="block px-4 py-3 hover:bg-paper">
-                    <p className="text-[15px] font-semibold">{n.title}</p>
-                    {n.body && <p className="text-sm text-ink-soft">{n.body}</p>}
+                    <p className="truncate text-[15px] font-semibold">{n.title}</p>
+                    {n.body && <p className="line-clamp-2 text-sm text-ink-soft">{n.body}</p>}
                     <p className="mt-0.5 text-xs text-mist">{dateTime(n.created_at)}</p>
                   </Link>
                 </li>

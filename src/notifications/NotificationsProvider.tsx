@@ -14,8 +14,8 @@ function Toast({ n, onClose }: { n: AppNotification; onClose: () => void }) {
 
   const content = (
     <>
-      <p className="font-display text-lg font-semibold leading-tight">{n.title}</p>
-      {n.body && <p className="mt-0.5 text-sm text-white/75">{n.body}</p>}
+      <p className="truncate font-display text-lg font-semibold leading-tight">{n.title}</p>
+      {n.body && <p className="mt-0.5 line-clamp-2 text-sm text-white/75">{n.body}</p>}
     </>
   )
   return (

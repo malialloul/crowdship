@@ -5,6 +5,7 @@ import { useAuth } from '../../auth/auth-context'
 import { useLiveRefresh } from '../../notifications/notifications-context'
 import { listCarrying, listMyOrders } from '../../services/orders'
 import { OrderRow } from '../../components/OrderRow'
+import { SearchBar } from '../../components/SearchBar'
 import { messageOf } from '../../lib/errors'
 import type { Order } from '../../lib/database.types'
 
@@ -43,6 +44,11 @@ export default function OrdersPage() {
           Post an order
         </Link>
       </div>
+
+      <section className="space-y-3 rounded-xl bg-ink p-5 sm:p-6">
+        <h2 className="text-2xl text-white">What do you want from abroad?</h2>
+        <SearchBar />
+      </section>
 
       {error && <p className="alert-error">{error}</p>}
 

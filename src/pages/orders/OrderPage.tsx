@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { ExternalLink, Package, Plane } from 'lucide-react'
+import { ExternalLink, Plane } from 'lucide-react'
+import { Thumb } from '../../components/Thumb'
 import { useAuth } from '../../auth/auth-context'
 import { useLiveRefresh } from '../../notifications/notifications-context'
 import {
@@ -45,13 +46,7 @@ function OrderSummary({ order }: { order: Order }) {
   return (
     <section className="panel overflow-hidden">
       <div className="flex flex-col gap-5 p-6 sm:flex-row">
-        <div className="grid size-28 shrink-0 place-items-center overflow-hidden rounded-lg border border-line bg-paper">
-          {order.image_url ? (
-            <img src={order.image_url} alt="" className="size-full object-contain" />
-          ) : (
-            <Package className="size-10 text-mist" aria-hidden />
-          )}
-        </div>
+        <Thumb src={order.image_url} className="size-28 rounded-lg" iconClass="size-10" />
         <div className="min-w-0 flex-1 space-y-3">
           <OrderTag status={order.status} />
           <h1 className="text-3xl sm:text-4xl">{order.title}</h1>
@@ -63,7 +58,7 @@ function OrderSummary({ order }: { order: Order }) {
               className="inline-flex items-center gap-1.5 text-sm font-semibold underline underline-offset-4"
             >
               <ExternalLink className="size-3.5" aria-hidden />
-              {new URL(order.item_url).hostname.replace(/^www\./, '')}
+              <span className="truncate">{new URL(order.item_url).hostname.replace(/^www\./, '')}</span>
             </a>
           )}
         </div>
@@ -166,24 +161,26 @@ function OfferCard({
 
   return (
     <article className={`panel space-y-4 p-5 ${offer.status === 'PENDING' || offer.status === 'ACCEPTED' ? '' : 'opacity-70'}`}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
           {viewer === 'shopper' && (
-            <p className="flex items-center gap-2 text-[17px] font-semibold">
-              {traveler?.display_name ?? 'Traveler'}
+            <p className="flex min-w-0 items-center gap-2 text-[17px] font-semibold">
+              <span className="truncate">{traveler?.display_name ?? 'Traveler'}</span>
               {traveler?.verified && <span className="tag bg-go text-white">Verified</span>}
             </p>
           )}
           {trip && (
-            <p className="flex items-center gap-1.5 text-sm text-ink-soft">
-              <Plane className="size-3.5" aria-hidden />
-              {trip.origin_city} to Beirut, {shortDate(trip.travel_date)}
+            <p className="flex min-w-0 items-center gap-1.5 text-sm text-ink-soft">
+              <Plane className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">
+                {trip.origin_city} to Beirut, {shortDate(trip.travel_date)}
+              </span>
             </p>
           )}
         </div>
-        <div className="text-right">
-          <p className="font-display text-3xl font-bold">{money(offer.amount, order.currency)}</p>
-          <p className={`text-sm font-semibold ${myTurn ? 'text-ink' : 'text-mist'}`}>{statusLine}</p>
+        <div className="shrink-0 text-right">
+          <p className="font-display text-3xl font-bold whitespace-nowrap">{money(offer.amount, order.currency)}</p>
+          <p className={`text-sm font-semibold whitespace-nowrap ${myTurn ? 'text-ink' : 'text-mist'}`}>{statusLine}</p>
         </div>
       </header>
 

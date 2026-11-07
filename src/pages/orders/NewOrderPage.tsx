@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { Link2 } from 'lucide-react'
 import { useAuth } from '../../auth/auth-context'
 import { createOrder, previewProduct } from '../../services/orders'
 import { VerifyNotice } from '../../components/VerifyNotice'
+import { Thumb } from '../../components/Thumb'
 import { ORIGINS, todayIso } from '../../lib/places'
 import { messageOf } from '../../lib/errors'
 import type { Currency } from '../../lib/database.types'
+import type { OrderPrefill } from '../../services/search'
 
 function num(v: string): number {
   return Number(v.replace(',', '.'))
@@ -15,20 +17,26 @@ function num(v: string): number {
 export default function NewOrderPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const prefill = (location.state as { prefill?: OrderPrefill } | null)?.prefill
   const verified = profile?.kyc_status === 'verified'
 
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState(prefill?.url ?? '')
   const [fetching, setFetching] = useState(false)
-  const [fetchNote, setFetchNote] = useState<string | null>(null)
+  const [fetchNote, setFetchNote] = useState<string | null>(
+    prefill
+      ? `Filled in from ${prefill.shop}.${prefill.price_label && prefill.currency !== 'USD' ? ` It's listed at ${prefill.price_label}; enter the price in USD.` : ''} Check every field.`
+      : null,
+  )
 
-  const [title, setTitle] = useState('')
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [title, setTitle] = useState(prefill?.title ?? '')
+  const [imageUrl, setImageUrl] = useState<string | null>(prefill?.image_url ?? null)
   const [description, setDescription] = useState('')
-  const [price, setPrice] = useState('')
+  const [price, setPrice] = useState(prefill?.price && prefill.currency === 'USD' ? String(prefill.price) : '')
   const [quantity, setQuantity] = useState('1')
   const [currency, setCurrency] = useState<Currency>('USD')
   const [weight, setWeight] = useState('')
-  const [country, setCountry] = useState('')
+  const [country, setCountry] = useState(prefill?.country ?? '')
   const [reward, setReward] = useState('')
   const [neededBy, setNeededBy] = useState('')
 
@@ -132,7 +140,7 @@ export default function NewOrderPage() {
 
         {imageUrl && (
           <div className="flex items-center gap-3">
-            <img src={imageUrl} alt="" className="size-20 rounded-md border border-line object-contain" />
+            <Thumb src={imageUrl} className="size-20" />
             <button type="button" className="text-sm font-semibold text-ink-soft underline underline-offset-4" onClick={() => setImageUrl(null)}>
               Remove picture
             </button>

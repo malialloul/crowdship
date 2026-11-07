@@ -14,6 +14,7 @@ const OrderPage = lazy(() => import('./pages/orders/OrderPage'))
 const TripsPage = lazy(() => import('./pages/trips/TripsPage'))
 const NewTripPage = lazy(() => import('./pages/trips/NewTripPage'))
 const TripPage = lazy(() => import('./pages/trips/TripPage'))
+const SearchPage = lazy(() => import('./pages/SearchPage'))
 const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
 const PaymentReturnPage = lazy(() => import('./pages/PaymentReturnPage'))
 const MockWhishPage = lazy(() => import('./pages/MockWhishPage'))
@@ -37,6 +38,7 @@ export default function App() {
               </RequireAuth>
             }
           >
+            <Route path="/search" element={<SearchPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/orders/new" element={<NewOrderPage />} />
             <Route path="/orders/:orderId" element={<OrderPage />} />

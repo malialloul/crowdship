@@ -33,13 +33,13 @@ function TripRow({ trip, activity }: { trip: Trip; activity?: TripActivity }) {
           <p className="text-sm text-mist">{month}</p>
         </div>
         <div className="min-w-0 flex-1 space-y-1">
-          <p className="font-display text-xl font-semibold">
+          <p className="truncate font-display text-xl font-semibold">
             {trip.origin_city} <span className="text-mist">to</span> Beirut
           </p>
-          <p className="text-sm text-ink-soft">
+          <p className="truncate text-sm text-ink-soft">
             {countryName(trip.origin_country)}, {trip.capacity_kg} kg of space
           </p>
-          {details.length > 0 && <p className="text-sm font-semibold text-ink">{details.join(', ')}</p>}
+          {details.length > 0 && <p className="truncate text-sm font-semibold text-ink">{details.join(', ')}</p>}
         </div>
         {hot ? (
           <span className="flex shrink-0 flex-col items-center rounded-lg bg-ink px-3 py-1.5 text-center text-white">

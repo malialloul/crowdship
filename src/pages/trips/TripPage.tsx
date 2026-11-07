@@ -86,9 +86,9 @@ export default function TripPage() {
 
       <section className="rounded-xl bg-ink p-6 text-white">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-white/60">{shortDate(trip.travel_date)}</p>
-            <h1 className="text-4xl text-white">
+            <h1 className="truncate text-4xl text-white">
               {trip.origin_city} <span className="text-signal">to</span> Beirut
             </h1>
             <p className="text-white/60">{countryName(trip.origin_country)}</p>

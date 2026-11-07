@@ -13,7 +13,7 @@ function EscrowRow({ e, me }: { e: Escrow; me: string }) {
     <li className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-4">
       <div className="min-w-40 flex-1">
         <p className="font-display text-xl font-semibold">{money(e.total_amount, e.currency)}</p>
-        <p className="flex flex-wrap gap-x-3 text-sm text-mist">
+        <p className="truncate text-sm text-mist [&>span+span]:ml-3">
           <span className="font-semibold text-ink-soft">{paying ? 'You pay' : 'You receive'}</span>
           <span>Hold #{e.whish_external_id}</span>
           <span>{dateTime(e.created_at)}</span>

@@ -64,11 +64,11 @@ function ReviewCard({ item, onDone }: { item: KycReviewItem; onDone: () => void 
   return (
     <article className="panel space-y-5 p-5 sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl">{name}</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-2xl">{name}</h2>
           <p className="flex flex-wrap gap-x-4 text-sm text-ink-soft">
             {item.user?.phone && <span>{formatPhone(item.user.phone)}</span>}
-            {item.user?.email && <span>{item.user.email}</span>}
+            {item.user?.email && <span className="truncate">{item.user.email}</span>}
           </p>
           <p className="mt-1 text-sm text-mist">
             {item.document_type === 'national_id' ? 'Lebanese ID card' : 'Passport'}, submitted {dateTime(item.created_at)}
@@ -161,7 +161,7 @@ export default function AdminKycPage() {
               key={t.id}
               role="tab"
               aria-selected={tab === t.id}
-              className={`rounded px-3 py-1.5 text-[15px] font-semibold ${tab === t.id ? 'bg-ink text-white' : 'text-ink-soft'}`}
+              className={`whitespace-nowrap rounded px-3 py-1.5 text-[15px] font-semibold ${tab === t.id ? 'bg-ink text-white' : 'text-ink-soft'}`}
               onClick={() => setTab(t.id)}
             >
               {t.label}

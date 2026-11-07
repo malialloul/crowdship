@@ -185,7 +185,9 @@ function IdentitySection({ profile, onSubmitted }: { profile: Profile; onSubmitt
         <ShieldCheck className="mt-1 size-7 shrink-0 text-go" aria-hidden />
         <div>
           <h2 className="text-2xl">Identity verified</h2>
-          <p className="text-ink-soft">Approved {dateTime(profile.kyc_reviewed_at)}. Shoppers and travelers see your Verified badge.</p>
+          <p className="text-ink-soft">
+            {profile.kyc_reviewed_at ? `Approved ${dateTime(profile.kyc_reviewed_at)}. ` : ''}Shoppers and travelers see your Verified badge.
+          </p>
         </div>
       </section>
     )
@@ -291,11 +293,11 @@ export default function ProfilePage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <section className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
         <AvatarPicker profile={profile} onChanged={refreshProfile} />
-        <div className="space-y-2">
-          <h1 className="text-4xl">{profile.full_name || 'Welcome'}</h1>
-          <p className="flex flex-wrap justify-center gap-x-4 text-ink-soft sm:justify-start">
-            {profile.phone && <span>{formatPhone(profile.phone)}</span>}
-            {profile.email && <span>{profile.email}</span>}
+        <div className="min-w-0 max-w-full space-y-2">
+          <h1 className="truncate text-4xl">{profile.full_name || 'Welcome'}</h1>
+          <p className="flex max-w-full flex-wrap justify-center gap-x-4 text-ink-soft sm:justify-start">
+            {profile.phone && <span className="whitespace-nowrap">{formatPhone(profile.phone)}</span>}
+            {profile.email && <span className="max-w-full truncate">{profile.email}</span>}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-start">
             <VerificationBadge status={profile.kyc_status} />

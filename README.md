@@ -33,6 +33,8 @@ Stack: React 19 + TypeScript + Vite, Tailwind CSS v4, Supabase (Postgres, Auth, 
 | 2.3 | Shopper alerted to new offers | `notifications` table + Supabase Realtime → bell and toast |
 | 2.3 | Accepting locks the order to `AWAITING_PAYMENT_HOLD` | `respond_offer('accept')`; other offers auto-declined; shopper then pays via `escrow` `create_hold` (amounts read from the order) |
 
+**Smart search** (`/search`, also on the Orders page): type an item, pick a country, and get shops with the address when it has a store, a link to its website, a direct link to the item, and "Request this" to prefill an order. The `product-search` Edge Function queries [Serper](https://serper.dev) (Google web, shopping and Places results) and needs the `SERPER_API_KEY` secret. Results are cached for 30 minutes per query.
+
 ```
 Order: SEARCHING_TRAVELER → AWAITING_PAYMENT_HOLD → PURCHASING (Whish HELD) → IN_TRANSIT (Sprint 3) → DELIVERED (RELEASED)
        any of the first two → CANCELLED
@@ -54,7 +56,7 @@ Enforced in Postgres twice: `escrow_transition()` checks the move, and a trigger
 ```
 supabase/
   migrations/   profiles + KYC + storage, escrow + payouts
-  functions/    escrow/ (create_hold, verify, release, Whish callback), product-preview/
+  functions/    escrow/ (create_hold, verify, release, Whish callback), product-preview/, product-search/
   tests/        sprint1.sql (32 checks), sprint2.sql (31 checks)
   config.toml   local auth (test OTP numbers), Google, Edge Function JWT settings
 src/
@@ -112,7 +114,7 @@ supabase link --project-ref <ref>
 supabase db push
 supabase secrets set --env-file supabase/functions/.env   # with WHISH_MODE=live
 supabase functions deploy escrow --no-verify-jwt
-supabase functions deploy product-preview
+supabase functions deploy product-preview product-search
 ```
 
 In the Dashboard:

@@ -182,11 +182,11 @@ export default function AdminEscrowPage() {
                         item {money(e.item_amount, e.currency)} + reward {money(e.reward_amount, e.currency)}
                       </span>
                     </p>
-                    <p className="text-sm text-ink-soft">
+                    <p className="truncate text-sm text-ink-soft">
                       {e.shopper?.full_name || formatPhone(e.shopper?.phone) || 'Shopper'} pays{' '}
                       {e.traveler?.full_name || formatPhone(e.traveler?.phone) || 'Traveler'}
                     </p>
-                    <p className="text-sm text-mist">
+                    <p className="truncate text-sm text-mist">
                       Hold #{e.whish_external_id}, created {dateTime(e.created_at)}
                       {e.held_at && `, held ${dateTime(e.held_at)}`}
                     </p>

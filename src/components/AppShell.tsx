@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router'
-import { LogOut } from 'lucide-react'
+import { LogOut, Search } from 'lucide-react'
 import { useAuth } from '../auth/auth-context'
 import { NotificationBell } from './NotificationBell'
 import { APP_NAME } from '../lib/supabase'
@@ -18,7 +18,7 @@ export function Wordmark() {
 }
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
-  `rounded-md px-3 py-2 text-[15px] font-semibold ${isActive ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'}`
+  `shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-[15px] font-semibold ${isActive ? 'bg-ink text-white' : 'text-ink-soft hover:text-ink'}`
 
 export function AppShell() {
   const { profile, signOut } = useAuth()
@@ -30,7 +30,7 @@ export function AppShell() {
           <NavLink to="/orders" aria-label={`${APP_NAME} home`}>
             <Wordmark />
           </NavLink>
-          <nav className="order-3 flex w-full gap-1 overflow-x-auto sm:order-none sm:ml-6 sm:w-auto" aria-label="Main">
+          <nav className="order-3 -mx-4 flex w-[calc(100%+2rem)] gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:order-none sm:mx-0 sm:ml-6 sm:w-auto sm:px-0" aria-label="Main">
             <NavLink to="/orders" className={linkCls}>
               Orders
             </NavLink>
@@ -55,6 +55,10 @@ export function AppShell() {
             )}
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            <NavLink to="/search" className="btn btn-quiet h-9 px-3 text-sm" aria-label="Search shops abroad">
+              <Search className="size-4" aria-hidden />
+              <span className="hidden sm:inline">Search</span>
+            </NavLink>
             <NotificationBell />
             <button type="button" onClick={() => void signOut()} className="btn btn-quiet h-9 px-3 text-sm" aria-label="Sign out">
               <LogOut className="size-4" aria-hidden />

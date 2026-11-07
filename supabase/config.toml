@@ -63,3 +63,7 @@ verify_jwt = false
 # Reads product details from a pasted shop link (signed-in users only).
 [functions.product-preview]
 verify_jwt = true
+
+# Smart search for shoppers (needs the SERPER_API_KEY secret).
+[functions.product-search]
+verify_jwt = true
