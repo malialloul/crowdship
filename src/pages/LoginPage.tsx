@@ -6,6 +6,7 @@ import { messageOf } from '../lib/errors'
 import { useAuth } from '../auth/auth-context'
 import { Wordmark } from '../components/AppShell'
 import { FullPageSpinner } from '../components/Guards'
+import { useAuthProviders } from '../lib/authProviders'
 
 const ROUTES = [
   { code: 'DXB', city: 'Dubai' },
@@ -60,6 +61,9 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
+  const providers = useAuthProviders()
+  const showPhone = providers?.phone ?? true
+  const showGoogle = providers?.google ?? true
 
   useEffect(() => {
     if (cooldown <= 0) return
@@ -136,60 +140,79 @@ export default function LoginPage() {
       </section>
 
       <section className="panel self-center p-6 sm:p-8">
-        {!phone ? (
+        {!showPhone && !showGoogle ? (
+          <div className="space-y-3">
+            <h2 className="text-2xl">Sign-in isn't set up yet</h2>
+            <p className="text-ink-soft">
+              Turn on Phone or Google in Supabase under Authentication → Providers, then reload this page.
+            </p>
+          </div>
+        ) : !phone ? (
           <form onSubmit={onSubmitPhone} noValidate className="space-y-5">
             <div>
               <h2 className="text-2xl">Sign in or create an account</h2>
-              <p className="mt-1 text-ink-soft">We'll text you a 6-digit code.</p>
+              {showPhone && <p className="mt-1 text-ink-soft">We'll text you a 6-digit code.</p>}
             </div>
 
-            <div>
-              <label htmlFor="phone" className="field-label">
-                Mobile number
-              </label>
-              <div className="flex gap-2">
-                <select
-                  aria-label="Country code"
-                  className="input w-[7.5rem] shrink-0 pr-1"
-                  value={dial}
-                  onChange={(e) => setDial(e.target.value)}
-                >
-                  {COUNTRIES.map((c) => (
-                    <option key={c.iso} value={c.dial}>
-                      {c.iso} +{c.dial}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  id="phone"
-                  className="input"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel-national"
-                  placeholder={dial === '961' ? '71 123 456' : 'Phone number'}
-                  value={number}
-                  onChange={(e) => setNumber(e.target.value)}
-                />
-              </div>
-              <p className="field-hint">Lebanese or international numbers both work.</p>
-            </div>
+            {showPhone && (
+              <>
+                <div>
+                  <label htmlFor="phone" className="field-label">
+                    Mobile number
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      aria-label="Country code"
+                      className="input w-[7.5rem] shrink-0 pr-1"
+                      value={dial}
+                      onChange={(e) => setDial(e.target.value)}
+                    >
+                      {COUNTRIES.map((c) => (
+                        <option key={c.iso} value={c.dial}>
+                          {c.iso} +{c.dial}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      id="phone"
+                      className="input"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      placeholder={dial === '961' ? '71 123 456' : 'Phone number'}
+                      value={number}
+                      onChange={(e) => setNumber(e.target.value)}
+                    />
+                  </div>
+                  <p className="field-hint">Lebanese or international numbers both work.</p>
+                </div>
+
+                <button type="submit" className="btn btn-primary w-full" disabled={busy}>
+                  {busy ? 'Sending code…' : 'Send code'}
+                </button>
+              </>
+            )}
 
             {error && <p className="alert-error" role="alert">{error}</p>}
 
-            <button type="submit" className="btn btn-primary w-full" disabled={busy}>
-              {busy ? 'Sending code…' : 'Send code'}
-            </button>
+            {showPhone && showGoogle && (
+              <div className="flex items-center gap-3 text-sm text-mist">
+                <span className="h-px flex-1 bg-line" />
+                or
+                <span className="h-px flex-1 bg-line" />
+              </div>
+            )}
 
-            <div className="flex items-center gap-3 text-sm text-mist">
-              <span className="h-px flex-1 bg-line" />
-              or
-              <span className="h-px flex-1 bg-line" />
-            </div>
-
-            <button type="button" className="btn btn-quiet w-full" onClick={() => void signInWithGoogle()}>
-              <GoogleIcon />
-              Continue with Google
-            </button>
+            {showGoogle && (
+              <button
+                type="button"
+                className={`btn w-full ${showPhone ? 'btn-quiet' : 'btn-primary'}`}
+                onClick={() => void signInWithGoogle()}
+              >
+                <GoogleIcon />
+                Continue with Google
+              </button>
+            )}
           </form>
         ) : (
           <form onSubmit={onSubmitCode} noValidate className="space-y-5">
