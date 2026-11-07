@@ -6,13 +6,17 @@ import { EscrowTag } from '../components/StatusTags'
 import { messageOf } from '../lib/errors'
 import { dateTime, money } from '../lib/format'
 import type { Escrow } from '../lib/database.types'
+import { MoneyBreakdown, splitAmounts, splitFromEscrow } from '../components/MoneyBreakdown'
 
 function EscrowRow({ e, me }: { e: Escrow; me: string }) {
   const paying = e.shopper_id === me
+  const [open, setOpen] = useState(false)
+  const split = splitFromEscrow(e)
+  const { shopperPays, travelerGets } = splitAmounts(split)
   return (
     <li className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-4">
       <div className="min-w-40 flex-1">
-        <p className="font-display text-xl font-semibold">{money(e.total_amount, e.currency)}</p>
+        <p className="font-display text-xl font-semibold">{money(paying ? shopperPays : travelerGets, e.currency)}</p>
         <p className="truncate text-sm text-mist [&>span+span]:ml-3">
           <span className="font-semibold text-ink-soft">{paying ? 'You pay' : 'You receive'}</span>
           <span>Hold #{e.whish_external_id}</span>
@@ -25,10 +29,18 @@ function EscrowRow({ e, me }: { e: Escrow; me: string }) {
           View order
         </Link>
       )}
+      <button type="button" className="text-sm font-semibold underline underline-offset-4" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        {open ? 'Hide details' : 'Details'}
+      </button>
       {paying && e.status === 'PENDING_PAYMENT' && (
         <Link to={`/payments/${e.id}/return`} className="text-sm font-semibold underline underline-offset-4">
           Check payment
         </Link>
+      )}
+      {open && (
+        <div className="w-full max-w-sm rounded-md bg-paper p-3">
+          <MoneyBreakdown split={split} viewer={paying ? 'shopper' : 'traveler'} />
+        </div>
       )}
     </li>
   )

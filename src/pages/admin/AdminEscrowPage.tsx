@@ -9,6 +9,8 @@ import {
   type AdminPayout,
 } from '../../services/escrow'
 import { EscrowTag } from '../../components/StatusTags'
+import { MoneyBreakdown, splitFromEscrow } from '../../components/MoneyBreakdown'
+import { Check, Copy } from 'lucide-react'
 import { formatPhone } from '../../lib/phone'
 import { messageOf } from '../../lib/errors'
 import { dateTime, money } from '../../lib/format'
@@ -47,10 +49,9 @@ function ReleaseControl({ escrow, onDone }: { escrow: AdminEscrow; onDone: () =>
     )
   }
   return (
-    <div className="w-full space-y-2 rounded-md bg-signal-wash p-3 sm:w-auto">
-      <p className="text-sm">
-        Release {money(escrow.total_amount, escrow.currency)} to {escrow.traveler?.full_name || 'the traveler'}? This can't be undone.
-      </p>
+    <div className="w-full space-y-3 rounded-md bg-signal-wash p-3 sm:w-72">
+      <p className="text-sm font-semibold">Release to {escrow.traveler?.full_name || 'the traveler'}? This can't be undone.</p>
+      <MoneyBreakdown split={splitFromEscrow(escrow)} viewer="admin" />
       {error && <p className="alert-error">{error}</p>}
       <div className="flex gap-2">
         <button type="button" className="btn btn-ink h-9 text-sm" disabled={busy} onClick={() => void release()}>
@@ -61,6 +62,25 @@ function ReleaseControl({ escrow, onDone }: { escrow: AdminEscrow; onDone: () =>
         </button>
       </div>
     </div>
+  )
+}
+
+function CopyValue({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      className="btn btn-quiet h-9 text-sm"
+      onClick={() =>
+        void navigator.clipboard.writeText(value).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        })
+      }
+    >
+      {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
+      {copied ? 'Copied' : label}
+    </button>
   )
 }
 
@@ -84,23 +104,33 @@ function PayoutRow({ payout, onDone }: { payout: AdminPayout; onDone: () => void
   return (
     <li className="space-y-3 px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-display text-xl font-semibold">{money(payout.amount, payout.currency)}</p>
+        <p className="min-w-0 truncate text-[15px]">
+          Send to <strong>{payout.traveler?.full_name || 'Traveler'}</strong> on Whish{' '}
+          <strong>{formatPhone(payout.whish_phone) || 'no number on file'}</strong>
+        </p>
         <p className="text-sm text-mist">Queued {dateTime(payout.created_at)}</p>
       </div>
-      <p className="text-[15px]">
-        Send to <strong>{payout.traveler?.full_name || 'Traveler'}</strong> on Whish{' '}
-        <strong>{formatPhone(payout.whish_phone) || 'no number on file'}</strong>
-      </p>
+      <div className="max-w-sm">
+        {payout.escrow ? (
+          <MoneyBreakdown split={splitFromEscrow(payout.escrow)} viewer="admin" />
+        ) : (
+          <p className="font-display text-xl font-semibold">{money(payout.amount, payout.currency)}</p>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <CopyValue label={`Copy ${money(payout.amount, payout.currency)}`} value={String(payout.amount)} />
+        {payout.whish_phone && <CopyValue label="Copy number" value={payout.whish_phone} />}
+      </div>
       <div className="flex flex-wrap gap-2">
         <input
-          aria-label="Whish transfer reference"
+          aria-label="Whish transfer reference (optional)"
           className="input h-9 max-w-xs text-sm"
-          placeholder="Whish transfer reference"
+          placeholder="Whish reference (optional)"
           value={ref}
           onChange={(e) => setRef(e.target.value)}
         />
-        <button type="button" className="btn btn-ink h-9 text-sm" disabled={busy || !ref.trim()} onClick={() => void submit()}>
-          Mark as paid
+        <button type="button" className="btn btn-ink h-9 text-sm" disabled={busy} onClick={() => void submit()}>
+          Mark as sent
         </button>
       </div>
       {error && <p className="alert-error">{error}</p>}
@@ -194,8 +224,8 @@ export default function AdminEscrowPage() {
                     <p className="font-display text-xl font-semibold">
                       {money(e.total_amount, e.currency)}{' '}
                       <span className="text-[15px] font-medium text-mist">
-                        item {money(e.item_amount, e.currency)} + reward {money(e.reward_amount, e.currency)}
-                        {e.platform_fee > 0 && ` + fee ${money(e.platform_fee, e.currency)}`}
+                        item {money(e.item_amount, e.currency)} · traveler {money(e.reward_amount, e.currency)}
+                        {e.platform_fee > 0 && ` · app ${money(e.platform_fee, e.currency)}${e.fee_payer === 'traveler' ? ' (from traveler)' : ''}`}
                       </span>
                     </p>
                     <p className="truncate text-sm text-ink-soft">

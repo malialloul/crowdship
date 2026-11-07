@@ -27,7 +27,8 @@ import {
   ProofUploadPanel,
   useProofs,
 } from './HandoverPanels'
-import { startPaymentHold } from '../../services/escrow'
+import { getEscrowForOrder, startPaymentHold } from '../../services/escrow'
+import { MoneyBreakdown, splitAmounts, splitFromEscrow, type Split } from '../../components/MoneyBreakdown'
 import { OrderTag } from '../../components/StatusTags'
 import { VerifyNotice } from '../../components/VerifyNotice'
 import { FullPageSpinner } from '../../components/Guards'
@@ -420,8 +421,14 @@ function MakeOfferForm({ order, trips, hubs, onDone }: { order: Order; trips: Tr
 function PayPanel({ order, settings }: { order: Order; settings: AppSettings | null }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const fee = shopperFee(settings, order.currency)
-  const total = order.item_total + (order.agreed_reward ?? 0) + fee
+  const split: Split = {
+    item: order.item_total,
+    reward: order.agreed_reward ?? 0,
+    fee: shopperFee(settings, order.currency),
+    feePayer: 'shopper',
+    currency: order.currency,
+  }
+  const total = splitAmounts(split).shopperPays
 
   async function pay() {
     setBusy(true)
@@ -438,32 +445,30 @@ function PayPanel({ order, settings }: { order: Order; settings: AppSettings | n
   return (
     <section className="space-y-4 rounded-xl bg-ink p-6 text-white">
       <h2 className="text-2xl text-white">Pay into escrow to lock the deal</h2>
-      <dl className="space-y-1 text-[15px]">
-        <div className="flex justify-between gap-4">
-          <dt className="text-white/70">Item</dt>
-          <dd>{money(order.item_total, order.currency)}</dd>
-        </div>
-        <div className="flex justify-between gap-4">
-          <dt className="text-white/70">Traveler reward</dt>
-          <dd>{money(order.agreed_reward ?? 0, order.currency)}</dd>
-        </div>
-        {fee > 0 && (
-          <div className="flex justify-between gap-4">
-            <dt className="text-white/70">Service fee</dt>
-            <dd>{money(fee, order.currency)}</dd>
-          </div>
-        )}
-        <div className="flex justify-between gap-4 border-t border-white/20 pt-1 font-semibold">
-          <dt>Total</dt>
-          <dd>{money(total, order.currency)}</dd>
-        </div>
-      </dl>
+      <MoneyBreakdown split={split} viewer="shopper" tone="dark" />
       <p className="text-white/75">Whish holds it. The traveler is paid only after you receive the item.</p>
       {error && <p className="rounded-md bg-stop-wash px-3 py-2 text-sm text-stop">{error}</p>}
       <button type="button" className="btn btn-primary w-full sm:w-auto" disabled={busy} onClick={() => void pay()}>
         {busy ? 'Opening Whish…' : `Pay ${money(total, order.currency)} with Whish`}
       </button>
     </section>
+  )
+}
+
+/** The traveler's cut of a held or released payment, read from the escrow itself. */
+function TravelerPayout({ order, version, released, inset = false }: { order: Order; version: string; released: boolean; inset?: boolean }) {
+  const [escrow, setEscrow] = useState<Awaited<ReturnType<typeof getEscrowForOrder>>>(null)
+  useEffect(() => {
+    getEscrowForOrder(order.id)
+      .then(setEscrow)
+      .catch(() => setEscrow(null))
+  }, [order.id, version])
+  if (!escrow || (escrow.status !== 'HELD' && escrow.status !== 'RELEASED')) return null
+  return (
+    <div className={inset ? 'rounded-md bg-paper p-3' : 'panel p-5'}>
+      <p className="mb-1 text-sm font-semibold text-ink-soft">{released ? 'Your payout' : 'What you get on delivery'}</p>
+      <MoneyBreakdown split={splitFromEscrow(escrow)} viewer="traveler" />
+    </div>
   )
 }
 
@@ -504,8 +509,12 @@ function StatusPanels({
 
   if (order.status === 'PURCHASING') {
     if (isMyDelivery) {
-      if (order.proof_status === 'submitted') return <ProofSentPanel proofs={proofs} />
-      return <ProofUploadPanel order={order} trip={trip} onDone={onChanged} />
+      return (
+        <div className="space-y-4">
+          {order.proof_status === 'submitted' ? <ProofSentPanel proofs={proofs} /> : <ProofUploadPanel order={order} trip={trip} onDone={onChanged} />}
+          <TravelerPayout order={order} version={version} released={false} />
+        </div>
+      )
     }
     if (isShopper) {
       if (order.proof_status === 'submitted') return <ProofReviewPanel order={order} proofs={proofs} onDone={onChanged} />
@@ -532,10 +541,13 @@ function StatusPanels({
         )
       return <HandoverCodePanel order={order} version={version} />
     }
-    if (isMyDelivery) {
-      if (viaHub) return <HubQrPanel order={order} hub={hub} version={version} />
-      return <EnterCodePanel order={order} onDone={onChanged} />
-    }
+    if (isMyDelivery)
+      return (
+        <div className="space-y-4">
+          {viaHub ? <HubQrPanel order={order} hub={hub} version={version} /> : <EnterCodePanel order={order} onDone={onChanged} />}
+          <TravelerPayout order={order} version={version} released={false} />
+        </div>
+      )
   }
 
   if (order.status === 'DELIVERED') {
@@ -549,6 +561,7 @@ function StatusPanels({
     return (
       <Panel title="Delivered" tone="ok">
         <p>{isMyDelivery ? 'Your payment is on its way to your Whish account.' : 'The handover is done and the traveler has been paid.'}</p>
+        {isMyDelivery && <TravelerPayout order={order} version={version} released inset />}
       </Panel>
     )
   }

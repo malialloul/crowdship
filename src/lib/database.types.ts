@@ -828,7 +828,7 @@ export type Database = {
         Returns: undefined
       }
       mark_payout_paid: {
-        Args: { p_payout_id: string; p_reference: string }
+        Args: { p_payout_id: string; p_reference?: string | null }
         Returns: undefined
       }
       is_verified: { Args: never; Returns: boolean }

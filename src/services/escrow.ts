@@ -32,6 +32,20 @@ export function releaseEscrow(escrowId: string, reason?: string) {
   })
 }
 
+/** The payment behind an order (latest one that wasn't abandoned). */
+export async function getEscrowForOrder(orderId: string): Promise<Escrow | null> {
+  const { data, error } = await supabase
+    .from('escrow_transactions')
+    .select('*')
+    .eq('order_id', orderId)
+    .in('status', ['HELD', 'RELEASED', 'REFUNDED', 'PENDING_PAYMENT'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
 export async function getEscrow(escrowId: string): Promise<Escrow | null> {
   const { data, error } = await supabase.from('escrow_transactions').select('*').eq('id', escrowId).maybeSingle()
   if (error) throw error
@@ -72,20 +86,25 @@ export async function listEscrowsAdmin(status: EscrowStatus | 'ALL'): Promise<Ad
   return data
 }
 
-export type AdminPayout = Payout & { traveler: Party }
+export type AdminPayout = Payout & {
+  traveler: Party
+  escrow: Pick<Escrow, 'item_amount' | 'reward_amount' | 'platform_fee' | 'fee_payer' | 'currency' | 'order_id'> | null
+}
 
 export async function listQueuedPayouts(): Promise<AdminPayout[]> {
   const { data, error } = await supabase
     .from('payouts')
-    .select('*, traveler:profiles!payouts_traveler_id_fkey(full_name, phone)')
+    .select(
+      '*, traveler:profiles!payouts_traveler_id_fkey(full_name, phone), escrow:escrow_transactions!payouts_escrow_id_fkey(item_amount, reward_amount, platform_fee, fee_payer, currency, order_id)',
+    )
     .eq('status', 'queued')
     .order('created_at', { ascending: true })
   if (error) throw error
   return data
 }
 
-export async function markPayoutPaid(payoutId: string, reference: string): Promise<void> {
-  const { error } = await supabase.rpc('mark_payout_paid', { p_payout_id: payoutId, p_reference: reference })
+export async function markPayoutPaid(payoutId: string, reference?: string): Promise<void> {
+  const { error } = await supabase.rpc('mark_payout_paid', { p_payout_id: payoutId, p_reference: reference?.trim() || null })
   if (error) throw error
 }
 
