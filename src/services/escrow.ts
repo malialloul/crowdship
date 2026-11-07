@@ -11,18 +11,9 @@ export interface HoldResult {
   mode: 'live' | 'mock'
 }
 
-/**
- * Starts a Whish payment hold. Sprint 2 calls this when the shopper accepts
- * an offer (passing order_id); the browser is then sent to `collect_url`.
- */
-export function startPaymentHold(input: {
-  traveler_id: string
-  item_amount: number
-  reward_amount: number
-  currency: Currency
-  order_id?: string
-}): Promise<HoldResult> {
-  return invokeFunction<HoldResult>('escrow', { action: 'create_hold', ...input })
+/** Starts the Whish payment for an order whose offer was accepted. Amounts come from the server. */
+export function startPaymentHold(orderId: string): Promise<HoldResult> {
+  return invokeFunction<HoldResult>('escrow', { action: 'create_hold', order_id: orderId })
 }
 
 export function verifyPayment(escrowId: string, mockOutcome?: 'success' | 'failed') {

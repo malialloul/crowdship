@@ -70,7 +70,7 @@ export default function PaymentReturnPage() {
           <>
             <CircleAlert className="size-10 text-stop" aria-hidden />
             <h1 className="text-3xl">Payment didn't go through</h1>
-            <p className="text-ink-soft">Whish didn't take any money for this hold. You can start a new payment from the order.</p>
+            <p className="text-ink-soft">Whish didn't take any money for this hold. You can try again from the order.</p>
           </>
         ) : (
           <>
@@ -87,8 +87,8 @@ export default function PaymentReturnPage() {
           </>
         )}
         {error && <p className="alert-error">{error}</p>}
-        <Link to="/payments" className="btn btn-ink w-full">
-          Go to payments
+        <Link to={escrow?.order_id ? `/orders/${escrow.order_id}` : '/payments'} className="btn btn-ink w-full">
+          {escrow?.order_id ? 'Back to the order' : 'Go to payments'}
         </Link>
       </div>
     </div>

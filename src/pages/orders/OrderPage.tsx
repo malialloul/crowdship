@@ -1,0 +1,551 @@
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useParams } from 'react-router'
+import { ExternalLink, Package, Plane } from 'lucide-react'
+import { useAuth } from '../../auth/auth-context'
+import { useLiveRefresh } from '../../notifications/notifications-context'
+import {
+  cancelOrder,
+  fetchPublicProfiles,
+  getOrder,
+  listOfferEvents,
+  listOffersForOrder,
+  listTripsByIds,
+  makeOffer,
+  respondOffer,
+} from '../../services/orders'
+import { eligibleTrips } from '../../services/trips'
+import { startPaymentHold } from '../../services/escrow'
+import { OrderTag } from '../../components/StatusTags'
+import { VerifyNotice } from '../../components/VerifyNotice'
+import { FullPageSpinner } from '../../components/Guards'
+import { countryName, shortDate, todayIso } from '../../lib/places'
+import { messageOf } from '../../lib/errors'
+import { dateTime, money } from '../../lib/format'
+import type { Currency, Offer, OfferEvent, Order, PublicProfile, Trip } from '../../lib/database.types'
+
+type Party = 'shopper' | 'traveler'
+
+function amountOk(v: string, currency: Currency): number | null {
+  const n = Number(v.replace(',', '.'))
+  if (!Number.isFinite(n) || n < 0) return null
+  return currency === 'LBP' ? Math.round(n) : Math.round(n * 100) / 100
+}
+
+// ---------------------------------------------------------------- pieces
+
+function OrderSummary({ order }: { order: Order }) {
+  const rows: [string, string][] = [
+    ['Item', `${money(order.item_price, order.currency)}${order.quantity > 1 ? ` × ${order.quantity}` : ''}`],
+    [order.agreed_reward != null ? 'Agreed reward' : 'Offered reward', money(order.agreed_reward ?? order.reward_amount, order.currency)],
+    ['Ships from', countryName(order.origin_country)],
+    ['Estimated weight', `${order.weight_kg} kg`],
+  ]
+  if (order.needed_by) rows.push(['Needed by', shortDate(order.needed_by)])
+
+  return (
+    <section className="panel overflow-hidden">
+      <div className="flex flex-col gap-5 p-6 sm:flex-row">
+        <div className="grid size-28 shrink-0 place-items-center overflow-hidden rounded-lg border border-line bg-paper">
+          {order.image_url ? (
+            <img src={order.image_url} alt="" className="size-full object-contain" />
+          ) : (
+            <Package className="size-10 text-mist" aria-hidden />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <OrderTag status={order.status} />
+          <h1 className="text-3xl sm:text-4xl">{order.title}</h1>
+          {order.item_url && (
+            <a
+              href={order.item_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold underline underline-offset-4"
+            >
+              <ExternalLink className="size-3.5" aria-hidden />
+              {new URL(order.item_url).hostname.replace(/^www\./, '')}
+            </a>
+          )}
+        </div>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-t border-line px-6 py-4 sm:grid-cols-3">
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <dt className="text-sm text-mist">{k}</dt>
+            <dd className="font-semibold">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {order.description && <p className="border-t border-line px-6 py-4 whitespace-pre-line text-ink-soft">{order.description}</p>}
+    </section>
+  )
+}
+
+function History({ events, currency, viewer }: { events: OfferEvent[]; currency: Currency; viewer: Party }) {
+  if (events.length <= 1) return null
+  const verb: Record<string, string> = {
+    offer: 'offered',
+    counter: 'countered with',
+    accept: 'accepted',
+    decline: 'declined',
+    withdraw: 'withdrew',
+  }
+  return (
+    <ol className="space-y-1 border-l-2 border-line pl-3 text-sm text-ink-soft">
+      {events.map((e) => (
+        <li key={e.id}>
+          <span className="font-semibold capitalize text-ink">{e.actor === viewer ? 'You' : (e.actor ?? 'System')}</span>{' '}
+          {verb[e.action] ?? e.action}
+          {e.amount != null && e.action !== 'accept' ? ` ${money(e.amount, currency)}` : ''}
+          <span className="ml-2 text-mist">{dateTime(e.created_at)}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function OfferCard({
+  offer,
+  order,
+  trip,
+  traveler,
+  events,
+  viewer,
+  onChanged,
+}: {
+  offer: Offer
+  order: Order
+  trip: Trip | undefined
+  traveler: PublicProfile | undefined
+  events: OfferEvent[]
+  viewer: Party
+  onChanged: () => void
+}) {
+  const [countering, setCountering] = useState(false)
+  const [amount, setAmount] = useState(String(offer.amount))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const live = offer.status === 'PENDING' && order.status === 'SEARCHING_TRAVELER'
+  const myTurn = live && offer.awaiting === viewer
+  const canWithdrawAccepted =
+    viewer === 'traveler' && offer.status === 'ACCEPTED' && order.status === 'AWAITING_PAYMENT_HOLD'
+
+  async function act(action: 'accept' | 'counter' | 'decline' | 'withdraw') {
+    setError(null)
+    let value: number | undefined
+    if (action === 'counter') {
+      const v = amountOk(amount, order.currency)
+      if (v === null) return setError('Enter a valid amount')
+      value = v
+    }
+    setBusy(true)
+    try {
+      await respondOffer(offer.id, action, value)
+      setCountering(false)
+      onChanged()
+    } catch (err) {
+      setError(messageOf(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const statusLine =
+    offer.status === 'ACCEPTED'
+      ? 'Accepted'
+      : offer.status === 'DECLINED'
+        ? 'Declined'
+        : offer.status === 'WITHDRAWN'
+          ? 'Withdrawn'
+          : myTurn
+            ? 'Your move'
+            : viewer === 'shopper'
+              ? 'Waiting for the traveler'
+              : 'Waiting for the shopper'
+
+  return (
+    <article className={`panel space-y-4 p-5 ${offer.status === 'PENDING' || offer.status === 'ACCEPTED' ? '' : 'opacity-70'}`}>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          {viewer === 'shopper' && (
+            <p className="flex items-center gap-2 text-[17px] font-semibold">
+              {traveler?.display_name ?? 'Traveler'}
+              {traveler?.verified && <span className="tag bg-go text-white">Verified</span>}
+            </p>
+          )}
+          {trip && (
+            <p className="flex items-center gap-1.5 text-sm text-ink-soft">
+              <Plane className="size-3.5" aria-hidden />
+              {trip.origin_city} to Beirut, {shortDate(trip.travel_date)}
+            </p>
+          )}
+        </div>
+        <div className="text-right">
+          <p className="font-display text-3xl font-bold">{money(offer.amount, order.currency)}</p>
+          <p className={`text-sm font-semibold ${myTurn ? 'text-ink' : 'text-mist'}`}>{statusLine}</p>
+        </div>
+      </header>
+
+      {offer.message && <p className="rounded-md bg-paper px-3 py-2 text-[15px]">“{offer.message}”</p>}
+      <History events={events} currency={order.currency} viewer={viewer} />
+
+      {error && <p className="alert-error">{error}</p>}
+
+      {myTurn && !countering && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void act('accept')}>
+            Accept {money(offer.amount, order.currency)}
+          </button>
+          <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => setCountering(true)}>
+            Counter-offer
+          </button>
+          {viewer === 'shopper' && (
+            <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void act('decline')}>
+              Decline
+            </button>
+          )}
+        </div>
+      )}
+
+      {myTurn && countering && (
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label htmlFor={`counter-${offer.id}`} className="field-label">
+              Your amount ({order.currency})
+            </label>
+            <input
+              id={`counter-${offer.id}`}
+              className="input w-36"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <button type="button" className="btn btn-ink" disabled={busy} onClick={() => void act('counter')}>
+            Send counter-offer
+          </button>
+          <button type="button" className="btn btn-quiet" disabled={busy} onClick={() => setCountering(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {viewer === 'traveler' && (live || canWithdrawAccepted) && (
+        <button
+          type="button"
+          className="text-sm font-semibold text-stop underline underline-offset-4 disabled:opacity-50"
+          disabled={busy}
+          onClick={() => void act('withdraw')}
+        >
+          Withdraw my offer
+        </button>
+      )}
+    </article>
+  )
+}
+
+function MakeOfferForm({ order, trips, onDone }: { order: Order; trips: Trip[]; onDone: () => void }) {
+  const { profile } = useAuth()
+  const [tripId, setTripId] = useState(trips[0]?.id ?? '')
+  const [amount, setAmount] = useState(String(order.reward_amount))
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (trips.length === 0) {
+    return (
+      <section className="panel space-y-3 p-6">
+        <h2 className="text-2xl">Want to bring this?</h2>
+        <p className="text-ink-soft">
+          Add your trip from {countryName(order.origin_country)} to Beirut
+          {order.needed_by ? `, landing by ${shortDate(order.needed_by)},` : ''} and you can make an offer.
+        </p>
+        <Link to={`/trips/new?country=${order.origin_country}`} className="btn btn-ink">
+          Add a trip
+        </Link>
+      </section>
+    )
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    const v = amountOk(amount, order.currency)
+    if (v === null) return setError('Enter a valid reward')
+    setBusy(true)
+    setError(null)
+    try {
+      await makeOffer(order.id, tripId, v, message)
+      onDone()
+    } catch (err) {
+      setError(messageOf(err))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="panel space-y-4 p-6" noValidate>
+      <div>
+        <h2 className="text-2xl">Offer to bring it</h2>
+        <p className="mt-1 text-ink-soft">
+          The shopper offers {money(order.reward_amount, order.currency)}. Keep it, or ask for a different reward.
+        </p>
+      </div>
+      <VerifyNotice action="make offers" />
+      <div>
+        <label htmlFor="trip" className="field-label">
+          Your trip
+        </label>
+        <select id="trip" className="input" value={tripId} onChange={(e) => setTripId(e.target.value)}>
+          {trips.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.origin_city} to Beirut, {shortDate(t.travel_date)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label htmlFor="amount" className="field-label">
+            Your reward ({order.currency})
+          </label>
+          <input id="amount" className="input w-40" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </div>
+        {Number(amount) !== order.reward_amount && (
+          <button type="button" className="mb-2.5 text-sm font-semibold underline underline-offset-4" onClick={() => setAmount(String(order.reward_amount))}>
+            Use the shopper's {money(order.reward_amount, order.currency)}
+          </button>
+        )}
+      </div>
+      <div>
+        <label htmlFor="msg" className="field-label">
+          Message <span className="font-normal text-mist">(optional)</span>
+        </label>
+        <input id="msg" className="input" maxLength={500} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="I land Friday evening and can meet in Achrafieh" />
+      </div>
+      {error && <p className="alert-error">{error}</p>}
+      <button type="submit" className="btn btn-primary" disabled={busy || profile?.kyc_status !== 'verified'}>
+        {busy ? 'Sending…' : 'Send offer'}
+      </button>
+    </form>
+  )
+}
+
+function PayPanel({ order }: { order: Order }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const total = order.item_total + (order.agreed_reward ?? 0)
+
+  async function pay() {
+    setBusy(true)
+    setError(null)
+    try {
+      const hold = await startPaymentHold(order.id)
+      window.location.assign(hold.collect_url)
+    } catch (err) {
+      setError(messageOf(err))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl bg-ink p-6 text-white">
+      <h2 className="text-2xl text-white">Pay into escrow to lock the deal</h2>
+      <p className="text-white/75">
+        {money(order.item_total, order.currency)} for the item plus {money(order.agreed_reward ?? 0, order.currency)} reward. Whish holds
+        it; the traveler is paid only after you receive the item.
+      </p>
+      {error && <p className="rounded-md bg-stop-wash px-3 py-2 text-sm text-stop">{error}</p>}
+      <button type="button" className="btn btn-primary w-full sm:w-auto" disabled={busy} onClick={() => void pay()}>
+        {busy ? 'Opening Whish…' : `Pay ${money(total, order.currency)} with Whish`}
+      </button>
+    </section>
+  )
+}
+
+function InfoPanel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="panel space-y-2 border-l-4 border-l-signal p-6">
+      <h2 className="text-2xl">{title}</h2>
+      <div className="text-ink-soft">{children}</div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------- page
+
+export default function OrderPage() {
+  const { orderId = '' } = useParams()
+  const { user } = useAuth()
+  const [order, setOrder] = useState<Order | null | undefined>(undefined)
+  const [offers, setOffers] = useState<Offer[]>([])
+  const [trips, setTrips] = useState<Map<string, Trip>>(new Map())
+  const [events, setEvents] = useState<OfferEvent[]>([])
+  const [people, setPeople] = useState<Map<string, PublicProfile>>(new Map())
+  const [myTrips, setMyTrips] = useState<Trip[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
+
+  const load = useCallback(async () => {
+    if (!user) return
+    try {
+      const o = await getOrder(orderId)
+      setOrder(o)
+      if (!o) return
+      const offs = await listOffersForOrder(o.id)
+      const [ts, evs, ppl] = await Promise.all([
+        listTripsByIds([...new Set(offs.map((x) => x.trip_id))]),
+        listOfferEvents(offs.map((x) => x.id)),
+        fetchPublicProfiles([...offs.map((x) => x.traveler_id), o.shopper_id]),
+      ])
+      setOffers(offs)
+      setTrips(new Map(ts.map((t) => [t.id, t])))
+      setEvents(evs)
+      setPeople(ppl)
+      if (o.shopper_id !== user.id && o.status === 'SEARCHING_TRAVELER') {
+        setMyTrips(await eligibleTrips(user.id, o, todayIso()))
+      }
+      setError(null)
+    } catch (err) {
+      setError(messageOf(err))
+    }
+  }, [orderId, user])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+  useLiveRefresh(() => void load())
+
+  if (order === undefined && !error) return <FullPageSpinner />
+  if (!order || !user) {
+    return (
+      <div className="mx-auto max-w-lg space-y-4">
+        <p className="panel p-6 text-ink-soft">{error ?? "This order doesn't exist or isn't visible to you."}</p>
+        <Link to="/orders" className="btn btn-quiet">
+          Back to orders
+        </Link>
+      </div>
+    )
+  }
+
+  const isShopper = order.shopper_id === user.id
+  const viewer: Party = isShopper ? 'shopper' : 'traveler'
+  const visibleOffers = isShopper ? offers : offers.filter((o) => o.traveler_id === user.id)
+  const liveOffers = visibleOffers.filter((o) => o.status === 'PENDING' || o.status === 'ACCEPTED')
+  const pastOffers = visibleOffers.filter((o) => o.status !== 'PENDING' && o.status !== 'ACCEPTED')
+  const hasLiveOwnOffer = !isShopper && offers.some((o) => o.traveler_id === user.id && o.status === 'PENDING')
+  const isMyDelivery = order.traveler_id === user.id
+  const shopperName = people.get(order.shopper_id)?.display_name
+
+  async function cancel() {
+    if (!order) return
+    setCancelling(true)
+    try {
+      await cancelOrder(order.id)
+      await load()
+    } catch (err) {
+      setError(messageOf(err))
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  const card = (o: Offer) => (
+    <OfferCard
+      key={o.id}
+      offer={o}
+      order={order}
+      trip={trips.get(o.trip_id)}
+      traveler={people.get(o.traveler_id)}
+      events={events.filter((e) => e.offer_id === o.id)}
+      viewer={viewer}
+      onChanged={() => void load()}
+    />
+  )
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <Link to={isShopper || isMyDelivery ? '/orders' : '/trips'} className="text-sm font-semibold text-ink-soft hover:text-ink">
+        ← {isShopper || isMyDelivery ? 'Orders' : 'Trips'}
+      </Link>
+
+      <OrderSummary order={order} />
+      {!isShopper && shopperName && <p className="text-sm text-ink-soft">Posted by {shopperName}</p>}
+      {error && <p className="alert-error">{error}</p>}
+
+      {/* Shopper */}
+      {isShopper && order.status === 'AWAITING_PAYMENT_HOLD' && <PayPanel order={order} />}
+      {isShopper && order.status === 'PURCHASING' && (
+        <InfoPanel title="Payment held. The traveler is buying your item">
+          Your money stays in Whish escrow until you receive the item.
+        </InfoPanel>
+      )}
+
+      {/* Traveler with the accepted deal */}
+      {isMyDelivery && order.status === 'AWAITING_PAYMENT_HOLD' && (
+        <InfoPanel title="Deal agreed. Wait for payment">
+          Don't buy the item yet. You'll get a notification as soon as the shopper's money is held in escrow.
+        </InfoPanel>
+      )}
+      {isMyDelivery && order.status === 'PURCHASING' && (
+        <InfoPanel title="Payment secured. Buy the item">
+          {money(order.item_total + (order.agreed_reward ?? 0), order.currency)} is held in Whish escrow. Buy the item and keep the
+          receipt; you're paid after the handover in Beirut.
+        </InfoPanel>
+      )}
+
+      {order.status === 'DELIVERED' && <InfoPanel title="Delivered">The handover is done and the traveler has been paid.</InfoPanel>}
+      {order.status === 'CANCELLED' && <InfoPanel title="Cancelled">This order is closed.</InfoPanel>}
+
+      {/* Offers */}
+      {(liveOffers.length > 0 || (isShopper && order.status === 'SEARCHING_TRAVELER')) && (
+        <section className="space-y-3">
+          <h2 className="text-2xl">
+            {!isShopper ? 'Your offer' : order.status === 'SEARCHING_TRAVELER' ? `Offers (${liveOffers.length})` : 'Accepted offer'}
+          </h2>
+          {liveOffers.length === 0 ? (
+            <p className="panel p-6 text-ink-soft">
+              No offers yet. Travelers flying from {countryName(order.origin_country)} see your order and can make one.
+            </p>
+          ) : (
+            liveOffers.map(card)
+          )}
+        </section>
+      )}
+
+      {!isShopper && order.status === 'SEARCHING_TRAVELER' && !hasLiveOwnOffer && (
+        <MakeOfferForm order={order} trips={myTrips} onDone={() => void load()} />
+      )}
+
+      {pastOffers.length > 0 && (
+        <details className="space-y-3">
+          <summary className="cursor-pointer text-[15px] font-semibold text-ink-soft">Closed offers ({pastOffers.length})</summary>
+          <div className="mt-3 space-y-3">{pastOffers.map(card)}</div>
+        </details>
+      )}
+
+      {isShopper && (order.status === 'SEARCHING_TRAVELER' || order.status === 'AWAITING_PAYMENT_HOLD') &&
+        (confirmCancel ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-stop-wash p-3">
+            <p className="text-[15px] text-stop">Cancel this order? Open offers will be closed.</p>
+            <button type="button" className="btn btn-danger h-9 text-sm" disabled={cancelling} onClick={() => void cancel()}>
+              {cancelling ? 'Cancelling…' : 'Yes, cancel order'}
+            </button>
+            <button type="button" className="btn btn-quiet h-9 text-sm" disabled={cancelling} onClick={() => setConfirmCancel(false)}>
+              Keep it
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="text-sm font-semibold text-stop underline underline-offset-4"
+            onClick={() => setConfirmCancel(true)}
+          >
+            Cancel this order
+          </button>
+        ))}
+    </div>
+  )
+}

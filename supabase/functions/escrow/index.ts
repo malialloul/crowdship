@@ -1,9 +1,11 @@
-// Supabase Edge Function: escrow  (Sprint 1 · Whish escrow hold & release)
+// Supabase Edge Function: escrow  (Whish escrow hold & release)
 //
-//   POST { action: "create_hold", traveler_id, item_amount, reward_amount, currency?, order_id? }  signed-in shopper
-//   POST { action: "verify", escrow_id, mock_outcome? }                                            shopper or admin
-//   POST { action: "release", escrow_id, reason? }                                                 admin
-//   GET|POST ?escrow_id=…&token=…                                                                  Whish callback
+//   POST { action: "create_hold", order_id }            shopper of an order with an accepted offer
+//   POST { action: "verify", escrow_id, mock_outcome? } shopper or admin
+//   POST { action: "release", escrow_id, reason? }      admin
+//   GET|POST ?escrow_id=…&token=…                       Whish callback
+//
+// Amounts always come from the order and its accepted offer, never from the browser.
 //
 // Deploy with JWT verification OFF (Whish calls the callback without a Supabase
 // token). Every user action checks the caller's session itself below.
@@ -244,45 +246,89 @@ function timingSafeEqual(a: string, b: string): boolean {
 // ---------------------------------------------------------------- actions
 const MAX_TOTAL: Record<Currency, number> = { USD: 10_000, LBP: 900_000_000 }
 
-function parseAmount(v: unknown, field: string, currency: Currency, allowZero: boolean): number {
-  const n = typeof v === 'string' ? Number(v) : v
-  if (typeof n !== 'number' || !Number.isFinite(n)) throw new HttpError(400, `${field} must be a number`)
-  if (allowZero ? n < 0 : n <= 0) throw new HttpError(400, `${field} must be ${allowZero ? '≥ 0' : '> 0'}`)
-  return currency === 'LBP' ? Math.round(n) : Math.round(n * 100) / 100
-}
-
 type Body = Record<string, unknown>
+
+interface OrderRow {
+  id: string
+  shopper_id: string
+  traveler_id: string | null
+  title: string
+  item_total: number
+  agreed_reward: number | null
+  currency: Currency
+  status: string
+}
 
 async function createHold(req: Request, body: Body): Promise<Response> {
   const caller = await requireCaller(req)
-  if (body.currency !== undefined && body.currency !== 'USD' && body.currency !== 'LBP') {
-    throw new HttpError(400, 'currency must be USD or LBP')
-  }
-  const currency: Currency = body.currency === 'LBP' ? 'LBP' : 'USD'
-  const travelerId = assertUuid(body.traveler_id, 'traveler_id')
-  const orderId = body.order_id == null ? null : assertUuid(body.order_id, 'order_id')
-  const itemAmount = parseAmount(body.item_amount, 'item_amount', currency, false)
-  const rewardAmount = parseAmount(body.reward_amount, 'reward_amount', currency, true)
-  if (itemAmount + rewardAmount > MAX_TOTAL[currency]) {
-    throw new HttpError(400, `Total exceeds the ${MAX_TOTAL[currency].toLocaleString()} ${currency} limit`)
-  }
-  if (travelerId === caller.id) throw new HttpError(400, 'You cannot be both shopper and traveler')
+  const orderId = assertUuid(body.order_id, 'order_id')
   if (caller.kyc_status !== 'verified') throw new HttpError(403, 'Verify your identity before paying', 'kyc_required')
 
   whishMode() // fail on misconfiguration before writing anything
 
-  const { data: traveler, error: tErr } = await db().from('profiles').select('id, kyc_status').eq('id', travelerId).maybeSingle()
+  const { data: orderData, error: oErr } = await db()
+    .from('orders')
+    .select('id, shopper_id, traveler_id, title, item_total, agreed_reward, currency, status')
+    .eq('id', orderId)
+    .maybeSingle()
+  if (oErr) throw oErr
+  const order = orderData as OrderRow | null
+  if (!order || order.shopper_id !== caller.id) throw new HttpError(404, 'Order not found')
+  if (order.status !== 'AWAITING_PAYMENT_HOLD' || !order.traveler_id || order.agreed_reward == null) {
+    throw new HttpError(409, 'This order has no accepted offer waiting for payment', 'not_awaiting_payment')
+  }
+  if (Number(order.item_total) + Number(order.agreed_reward) > MAX_TOTAL[order.currency]) {
+    throw new HttpError(400, `Total exceeds the ${MAX_TOTAL[order.currency].toLocaleString()} ${order.currency} limit`)
+  }
+
+  const { data: traveler, error: tErr } = await db()
+    .from('profiles')
+    .select('id, kyc_status')
+    .eq('id', order.traveler_id)
+    .maybeSingle()
   if (tErr) throw tErr
-  if (!traveler) throw new HttpError(404, 'Traveler not found')
-  if (traveler.kyc_status !== 'verified') throw new HttpError(409, 'Traveler identity is not verified yet', 'traveler_kyc_required')
+  if (!traveler || traveler.kyc_status !== 'verified') {
+    throw new HttpError(409, 'Traveler identity is not verified', 'traveler_kyc_required')
+  }
+
+  // Resume an unfinished payment instead of opening a second one.
+  const { data: live, error: lErr } = await db()
+    .from('escrow_transactions')
+    .select('*')
+    .eq('order_id', order.id)
+    .in('status', ['PENDING_PAYMENT', 'HELD'])
+    .maybeSingle()
+  if (lErr) throw lErr
+  if (live) {
+    const existing = live as EscrowRow & { whish_collect_url: string | null }
+    const status = await syncWithWhish(existing)
+    if (status === 'HELD') throw new HttpError(409, 'This order is already paid', 'already_paid')
+    if (status === 'PENDING_PAYMENT' && existing.whish_collect_url) {
+      return json({
+        escrow_id: existing.id,
+        status,
+        total_amount: existing.total_amount,
+        currency: existing.currency,
+        collect_url: existing.whish_collect_url,
+        mode: whishMode(),
+      })
+    }
+  }
 
   const { data: created, error: cErr } = await db()
     .from('escrow_transactions')
-    .insert({ order_id: orderId, shopper_id: caller.id, traveler_id: travelerId, item_amount: itemAmount, reward_amount: rewardAmount, currency })
+    .insert({
+      order_id: order.id,
+      shopper_id: caller.id,
+      traveler_id: order.traveler_id,
+      item_amount: order.item_total,
+      reward_amount: order.agreed_reward,
+      currency: order.currency,
+    })
     .select('*')
     .single()
   if (cErr) {
-    if (cErr.code === '23505') throw new HttpError(409, 'This order already has an active payment hold')
+    if (cErr.code === '23505') throw new HttpError(409, 'A payment for this order is already in progress')
     throw cErr
   }
   const escrow = created as EscrowRow
@@ -293,15 +339,15 @@ async function createHold(req: Request, body: Body): Promise<Response> {
     actor_type: 'user',
     actor_id: caller.id,
     reason: 'Payment hold requested',
-    payload: { order_id: orderId },
+    payload: { order_id: order.id },
   })
 
   try {
     const collectUrl = await whishCreatePayment({
       escrowId: escrow.id,
       amount: escrow.total_amount,
-      currency,
-      invoice: `Escrow hold #${escrow.whish_external_id}`,
+      currency: escrow.currency,
+      invoice: `${order.title.slice(0, 60)} (hold #${escrow.whish_external_id})`,
       externalId: escrow.whish_external_id,
       callbackUrl: `${functionsBaseUrl()}/escrow?escrow_id=${escrow.id}&token=${await callbackToken(escrow.id)}`,
       returnUrl: `${appUrl()}/payments/${escrow.id}/return`,
@@ -311,7 +357,7 @@ async function createHold(req: Request, body: Body): Promise<Response> {
       escrow_id: escrow.id,
       status: escrow.status,
       total_amount: escrow.total_amount,
-      currency,
+      currency: escrow.currency,
       collect_url: collectUrl,
       mode: whishMode(),
     })

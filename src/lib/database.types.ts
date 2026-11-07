@@ -170,6 +170,13 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
+            foreignKeyName: 'escrow_transactions_order_id_fkey'
+            columns: ['order_id']
+            isOneToOne: false
+            referencedRelation: 'orders'
+            referencedColumns: ['id']
+          },
+          {
             foreignKeyName: 'escrow_transactions_traveler_id_fkey'
             columns: ['traveler_id']
             isOneToOne: false
@@ -296,6 +303,295 @@ export type Database = {
           },
         ]
       }
+      orders: {
+        Row: {
+          id: string
+          shopper_id: string
+          item_url: string | null
+          title: string
+          description: string | null
+          image_url: string | null
+          item_price: number
+          quantity: number
+          item_total: number
+          currency: Database['public']['Enums']['escrow_currency']
+          weight_kg: number
+          origin_country: string
+          reward_amount: number
+          needed_by: string | null
+          status: Database['public']['Enums']['order_status']
+          traveler_id: string | null
+          trip_id: string | null
+          accepted_offer_id: string | null
+          agreed_reward: number | null
+          cancelled_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          shopper_id?: string
+          item_url?: string | null
+          title: string
+          description?: string | null
+          image_url?: string | null
+          item_price: number
+          quantity?: number
+          currency?: Database['public']['Enums']['escrow_currency']
+          weight_kg: number
+          origin_country: string
+          reward_amount: number
+          needed_by?: string | null
+          status?: Database['public']['Enums']['order_status']
+          traveler_id?: string | null
+          trip_id?: string | null
+          accepted_offer_id?: string | null
+          agreed_reward?: number | null
+          cancelled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          shopper_id?: string
+          item_url?: string | null
+          title?: string
+          description?: string | null
+          image_url?: string | null
+          item_price?: number
+          quantity?: number
+          currency?: Database['public']['Enums']['escrow_currency']
+          weight_kg?: number
+          origin_country?: string
+          reward_amount?: number
+          needed_by?: string | null
+          status?: Database['public']['Enums']['order_status']
+          traveler_id?: string | null
+          trip_id?: string | null
+          accepted_offer_id?: string | null
+          agreed_reward?: number | null
+          cancelled_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'orders_shopper_id_fkey'
+            columns: ['shopper_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'orders_traveler_id_fkey'
+            columns: ['traveler_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'orders_trip_id_fkey'
+            columns: ['trip_id']
+            isOneToOne: false
+            referencedRelation: 'trips'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'orders_accepted_offer_id_fkey'
+            columns: ['accepted_offer_id']
+            isOneToOne: false
+            referencedRelation: 'offers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      trips: {
+        Row: {
+          id: string
+          traveler_id: string
+          origin_country: string
+          origin_city: string
+          destination_city: string
+          travel_date: string
+          capacity_kg: number
+          notes: string | null
+          status: Database['public']['Enums']['trip_status']
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          traveler_id?: string
+          origin_country: string
+          origin_city: string
+          destination_city?: string
+          travel_date: string
+          capacity_kg: number
+          notes?: string | null
+          status?: Database['public']['Enums']['trip_status']
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          traveler_id?: string
+          origin_country?: string
+          origin_city?: string
+          destination_city?: string
+          travel_date?: string
+          capacity_kg?: number
+          notes?: string | null
+          status?: Database['public']['Enums']['trip_status']
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'trips_traveler_id_fkey'
+            columns: ['traveler_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      offers: {
+        Row: {
+          id: string
+          order_id: string
+          trip_id: string
+          traveler_id: string
+          amount: number
+          awaiting: Database['public']['Enums']['offer_party']
+          status: Database['public']['Enums']['offer_status']
+          message: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          trip_id: string
+          traveler_id: string
+          amount: number
+          awaiting?: Database['public']['Enums']['offer_party']
+          status?: Database['public']['Enums']['offer_status']
+          message?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          trip_id?: string
+          traveler_id?: string
+          amount?: number
+          awaiting?: Database['public']['Enums']['offer_party']
+          status?: Database['public']['Enums']['offer_status']
+          message?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'offers_order_id_fkey'
+            columns: ['order_id']
+            isOneToOne: false
+            referencedRelation: 'orders'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'offers_trip_id_fkey'
+            columns: ['trip_id']
+            isOneToOne: false
+            referencedRelation: 'trips'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'offers_traveler_id_fkey'
+            columns: ['traveler_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      offer_events: {
+        Row: {
+          id: number
+          offer_id: string
+          actor: Database['public']['Enums']['offer_party'] | null
+          action: string
+          amount: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          offer_id: string
+          actor?: Database['public']['Enums']['offer_party'] | null
+          action: string
+          amount?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          offer_id?: string
+          actor?: Database['public']['Enums']['offer_party'] | null
+          action?: string
+          amount?: number | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'offer_events_offer_id_fkey'
+            columns: ['offer_id']
+            isOneToOne: false
+            referencedRelation: 'offers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          id: string
+          user_id: string
+          kind: string
+          title: string
+          body: string | null
+          link: string | null
+          read_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          kind: string
+          title: string
+          body?: string | null
+          link?: string | null
+          read_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          kind?: string
+          title?: string
+          body?: string | null
+          link?: string | null
+          read_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: { [_ in never]: never }
     Functions: {
@@ -316,6 +612,25 @@ export type Database = {
         Args: { p_payout_id: string; p_reference: string }
         Returns: undefined
       }
+      is_verified: { Args: never; Returns: boolean }
+      make_offer: {
+        Args: { p_order_id: string; p_trip_id: string; p_amount: number; p_message?: string | null }
+        Returns: string
+      }
+      respond_offer: {
+        Args: { p_offer_id: string; p_action: 'accept' | 'counter' | 'decline' | 'withdraw'; p_amount?: number | null }
+        Returns: Database['public']['Tables']['offers']['Row']
+      }
+      cancel_order: { Args: { p_order_id: string }; Returns: undefined }
+      matching_orders: {
+        Args: { p_trip_id: string }
+        Returns: Database['public']['Tables']['orders']['Row'][]
+      }
+      public_profiles: {
+        Args: { p_ids: string[] }
+        Returns: { id: string; display_name: string; avatar_url: string | null; verified: boolean }[]
+      }
+      trip_committed_kg: { Args: { p_trip_id: string }; Returns: number }
     }
     Enums: {
       user_role: 'user' | 'admin'
@@ -324,6 +639,10 @@ export type Database = {
       escrow_status: 'PENDING_PAYMENT' | 'HELD' | 'RELEASED' | 'REFUNDED' | 'FAILED' | 'CANCELLED'
       escrow_currency: 'USD' | 'LBP'
       payout_status: 'queued' | 'paid' | 'failed'
+      order_status: 'SEARCHING_TRAVELER' | 'AWAITING_PAYMENT_HOLD' | 'PURCHASING' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED'
+      trip_status: 'OPEN' | 'CLOSED' | 'CANCELLED'
+      offer_status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN'
+      offer_party: 'shopper' | 'traveler'
     }
     CompositeTypes: { [_ in never]: never }
   }
@@ -340,3 +659,10 @@ export type Payout = Tables<'payouts'>
 export type KycStatus = Enums<'kyc_status'>
 export type EscrowStatus = Enums<'escrow_status'>
 export type Currency = Enums<'escrow_currency'>
+export type Order = Tables<'orders'>
+export type Trip = Tables<'trips'>
+export type Offer = Tables<'offers'>
+export type OfferEvent = Tables<'offer_events'>
+export type AppNotification = Tables<'notifications'>
+export type OrderStatus = Enums<'order_status'>
+export type PublicProfile = Database['public']['Functions']['public_profiles']['Returns'][number]

@@ -1,8 +1,9 @@
-# Crowdship — Sprint 1
+# Crowdship
 
 People in Lebanon order items from abroad; travelers flying into Beirut carry them. Money sits in Whish escrow until the handover.
 
-**Sprint 1 scope:** phone / Google sign-in, ID verification with admin review, and the Whish escrow state machine (hold → release).
+**Sprint 1:** phone / Google sign-in, ID verification with admin review, Whish escrow state machine (hold → release).
+**Sprint 2:** orders (paste a shop link or type details), trips and route matching, offers and counter-offers, live in-app notifications, and "accept offer" wired to the Whish hold.
 
 Stack: React 19 + TypeScript + Vite, Tailwind CSS v4, Supabase (Postgres, Auth, Storage, Edge Functions).
 
@@ -18,6 +19,24 @@ Stack: React 19 + TypeScript + Vite, Tailwind CSS v4, Supabase (Postgres, Auth, 
 | 1.2 | Whish payment request when an offer is accepted | `escrow` Edge Function, action `create_hold`; frontend `startPaymentHold()` (Sprint 2 calls it from "accept offer") |
 | 1.2 | Funds move to `HELD` in the state machine | `escrow_transition()` in SQL, called by the Whish callback / action `verify` after Whish confirms |
 | 1.2 | Admin or API hook to `RELEASE` | `escrow` action `release` (admin), `/admin/escrow`; Sprint 3 OTP adds an action that calls `transition(…, 'RELEASED')` with method `otp` |
+
+### Sprint 2
+
+| Story | AC | Implementation |
+|---|---|---|
+| 2.1 | Paste a shop link or fill details (name, price, weight, country) | `/orders/new`; `product-preview` Edge Function reads Open Graph / JSON-LD |
+| 2.1 | Proposed traveler reward | `orders.reward_amount` |
+| 2.1 | Published as `SEARCHING_TRAVELER` | `orders.status` default; verified users only (RLS) |
+| 2.2 | Trip: origin, Beirut, date, weight limit | `/trips/new` → `trips` |
+| 2.2 | Matching orders for the route | `matching_orders(trip_id)`: same country, fits the space left, needed after landing |
+| 2.3 | Accept the reward or propose another | `make_offer()`, `respond_offer('counter')`, turn-taking via `offers.awaiting` |
+| 2.3 | Shopper alerted to new offers | `notifications` table + Supabase Realtime → bell and toast |
+| 2.3 | Accepting locks the order to `AWAITING_PAYMENT_HOLD` | `respond_offer('accept')`; other offers auto-declined; shopper then pays via `escrow` `create_hold` (amounts read from the order) |
+
+```
+Order: SEARCHING_TRAVELER → AWAITING_PAYMENT_HOLD → PURCHASING (Whish HELD) → IN_TRANSIT (Sprint 3) → DELIVERED (RELEASED)
+       any of the first two → CANCELLED
+```
 
 ## Escrow state machine
 
@@ -35,8 +54,8 @@ Enforced in Postgres twice: `escrow_transition()` checks the move, and a trigger
 ```
 supabase/
   migrations/   profiles + KYC + storage, escrow + payouts
-  functions/    escrow/ — one function: create_hold, verify, release + Whish callback
-  tests/        sprint1.sql — 32 checks for RLS, KYC and escrow rules
+  functions/    escrow/ (create_hold, verify, release, Whish callback), product-preview/
+  tests/        sprint1.sql (32 checks), sprint2.sql (31 checks)
   config.toml   local auth (test OTP numbers), Google, Edge Function JWT settings
 src/
   auth/         session + profile context
@@ -93,6 +112,7 @@ supabase link --project-ref <ref>
 supabase db push
 supabase secrets set --env-file supabase/functions/.env   # with WHISH_MODE=live
 supabase functions deploy escrow --no-verify-jwt
+supabase functions deploy product-preview
 ```
 
 In the Dashboard:
@@ -126,10 +146,3 @@ The Whish client in `supabase/functions/escrow/index.ts` uses `POST /payment/whi
 - The `escrow` function runs with gateway JWT checks off (Whish can't send one) and checks the session itself on every user action.
 - `WHISH_MODE` has no default; the functions refuse to run until it's set. Mock mode lets the shopper approve their own payment, so it must never reach production.
 - Both shopper and traveler need a Verified badge before a hold can start.
-
-## Hooking into Sprint 2
-
-- Add `alter table escrow_transactions add foreign key (order_id) references orders(id);`
-- When the shopper accepts an offer: set the order to `AWAITING_PAYMENT_HOLD`, call `startPaymentHold({ order_id, traveler_id, item_amount, reward_amount, currency })`, then `window.location.assign(collect_url)`.
-- Move the amount calculation into the `create_hold` action (read it from the accepted offer by `order_id`) so the browser no longer sends amounts. The *Start a test hold* form on `/payments` can then go.
-- Regenerate types with `npm run db:types`.

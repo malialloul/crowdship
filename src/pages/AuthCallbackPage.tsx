@@ -20,5 +20,5 @@ export default function AuthCallbackPage() {
     )
   }
   if (loading) return <FullPageSpinner />
-  return <Navigate to={user ? '/profile' : '/login'} replace />
+  return <Navigate to={user ? '/orders' : '/login'} replace />
 }

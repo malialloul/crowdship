@@ -59,3 +59,7 @@ file_size_limit = "10MiB"
 # the function verifies the caller's session itself for every user action.
 [functions.escrow]
 verify_jwt = false
+
+# Reads product details from a pasted shop link (signed-in users only).
+[functions.product-preview]
+verify_jwt = true

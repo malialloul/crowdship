@@ -52,7 +52,7 @@ export default function LoginPage() {
   const { user, loading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = (location.state as { from?: string } | null)?.from ?? '/profile'
+  const from = (location.state as { from?: string } | null)?.from ?? '/orders'
 
   const [dial, setDial] = useState('961')
   const [number, setNumber] = useState('')
