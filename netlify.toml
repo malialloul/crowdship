@@ -4,6 +4,10 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # The Supabase URL and anon/publishable key are public by design (RLS protects
+  # the data) and end up in the browser bundle, so don't let secret scanning
+  # fail the build over them.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY"
 
 # Single-page app: send every route (/profile, /payments/..., /auth/callback) to index.html
 [[redirects]]
