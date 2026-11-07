@@ -65,3 +65,36 @@ export async function eligibleTrips(userId: string, order: Order, today: string)
   if (error) throw error
   return data
 }
+
+export interface TripActivity {
+  /** Matching open orders you haven't offered on yet. */
+  waiting: number
+  /** Your offers still being negotiated. */
+  offered: number
+  /** Orders you agreed to carry on this trip. */
+  carrying: number
+}
+
+/** Counts for the trips list, so trips with work to do stand out. */
+export async function tripActivity(trips: Trip[], today: string): Promise<Map<string, TripActivity>> {
+  const ids = trips.map((t) => t.id)
+  const result = new Map<string, TripActivity>(ids.map((id) => [id, { waiting: 0, offered: 0, carrying: 0 }]))
+  if (ids.length === 0) return result
+
+  const openTrips = trips.filter((t) => t.status === 'OPEN' && t.travel_date >= today)
+  const [matches, carrying, offers] = await Promise.all([
+    Promise.all(openTrips.map((t) => matchingOrders(t.id).catch(() => [] as Order[]))),
+    supabase.from('orders').select('trip_id').in('trip_id', ids).neq('status', 'CANCELLED'),
+    supabase.from('offers').select('trip_id, order_id').in('trip_id', ids).eq('status', 'PENDING'),
+  ])
+  if (carrying.error) throw carrying.error
+  if (offers.error) throw offers.error
+
+  const offeredOrders = new Set(offers.data.map((o) => o.order_id))
+  for (const o of offers.data) result.get(o.trip_id)!.offered += 1
+  for (const o of carrying.data) if (o.trip_id) result.get(o.trip_id)!.carrying += 1
+  openTrips.forEach((t, i) => {
+    result.get(t.id)!.waiting = matches[i].filter((m) => !offeredOrders.has(m.id)).length
+  })
+  return result
+}

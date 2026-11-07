@@ -248,7 +248,9 @@ function OfferCard({
 
 function MakeOfferForm({ order, trips, onDone }: { order: Order; trips: Trip[]; onDone: () => void }) {
   const { profile } = useAuth()
-  const [tripId, setTripId] = useState(trips[0]?.id ?? '')
+  // Trips load after the first render, so fall back to the first one until the user picks.
+  const [pickedTripId, setTripId] = useState<string | null>(null)
+  const tripId = trips.some((t) => t.id === pickedTripId) ? pickedTripId! : (trips[0]?.id ?? '')
   const [amount, setAmount] = useState(String(order.reward_amount))
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -273,6 +275,7 @@ function MakeOfferForm({ order, trips, onDone }: { order: Order; trips: Trip[]; 
     e.preventDefault()
     const v = amountOk(amount, order.currency)
     if (v === null) return setError('Enter a valid reward')
+    if (!tripId) return setError('Choose your trip')
     setBusy(true)
     setError(null)
     try {
