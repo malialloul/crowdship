@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+/*
+  Visual language: airport wayfinding. Slate signage ink, wayfinding yellow for
+  the one thing you should do next, and status shown as baggage tags.
+*/
+@theme {
+  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", ui-sans-serif, sans-serif;
+
+  --color-ink: #1b2430;
+  --color-ink-soft: #4a5566;
+  --color-mist: #7d8796;
+  --color-line: #d6dbe2;
+  --color-paper: #eef1f4;
+  --color-card: #ffffff;
+  --color-signal: #ffc72c;
+  --color-signal-deep: #f0b400;
+  --color-signal-wash: #fff4d1;
+  --color-go: #1f7a4d;
+  --color-go-wash: #e3f3ea;
+  --color-stop: #b3122a;
+  --color-stop-wash: #fbe7ea;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-semibold tracking-tight text-ink;
+    line-height: 1.1;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-md px-4 text-[15px] font-semibold
+      transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-signal text-ink hover:bg-signal-deep;
+  }
+  .btn-ink {
+    @apply bg-ink text-white hover:bg-ink-soft;
+  }
+  .btn-quiet {
+    @apply border border-line bg-card text-ink hover:border-ink-soft;
+  }
+  .btn-danger {
+    @apply border border-stop/30 bg-card text-stop hover:bg-stop-wash;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-sm font-semibold text-ink;
+  }
+  .field-hint {
+    @apply mt-1.5 text-sm text-mist;
+  }
+  .input {
+    @apply h-11 w-full rounded-md border border-line bg-card px-3 text-base text-ink
+      placeholder:text-mist focus:border-ink focus:outline-none;
+  }
+  textarea.input {
+    @apply h-auto py-2;
+  }
+
+  .panel {
+    @apply rounded-xl border border-line bg-card;
+  }
+
+  .alert-error {
+    @apply rounded-md border border-stop/25 bg-stop-wash px-3 py-2 text-sm text-stop;
+  }
+  .alert-ok {
+    @apply rounded-md border border-go/25 bg-go-wash px-3 py-2 text-sm text-go;
+  }
+
+  /* Baggage-tag status chip: notched left edge with a punched hole. */
+  .tag {
+    @apply relative inline-flex h-7 items-center gap-1.5 rounded-r-md pr-2.5 pl-5 font-display text-[15px] font-semibold;
+    clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 50%);
+  }
+  .tag::before {
+    content: "";
+    @apply absolute top-1/2 left-[9px] size-1.5 -translate-y-1/2 rounded-full bg-paper;
+  }
+}

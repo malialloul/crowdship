@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Single-page app: send every route (/profile, /payments/..., /auth/callback) to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

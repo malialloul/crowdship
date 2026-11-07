@@ -1,0 +1,61 @@
+# Local development settings for `supabase start`.
+# Run `supabase init` first if you want the full default file, then merge these
+# sections in. Hosted projects are configured in the Dashboard (see README).
+
+project_id = "crowdship"
+
+[api]
+port = 54321
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+port = 54323
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = true
+template = "Your verification code is {{ .Code }}"
+max_frequency = "60s"
+
+# Local testing: these numbers always accept this code, and no SMS is sent.
+# (Key is the phone number without "+".)
+[auth.sms.test_otp]
+96170000001 = "123456"
+96170000002 = "123456"
+96170000003 = "123456"
+
+# Phone auth only starts with an SMS provider enabled, even locally. These
+# placeholders never send anything; locally only the test numbers above work.
+# Production: configure Twilio Verify (or an SMS hook) in the Dashboard.
+[auth.sms.twilio]
+enabled = true
+account_sid = "AC00000000000000000000000000000000"
+message_service_sid = "MG00000000000000000000000000000000"
+auth_token = "local-placeholder"
+
+# Set enabled = true after putting GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in
+# supabase/.env (Google Cloud redirect URI: http://127.0.0.1:54321/auth/v1/callback).
+[auth.external.google]
+enabled = false
+client_id = "env(GOOGLE_CLIENT_ID)"
+secret = "env(GOOGLE_CLIENT_SECRET)"
+redirect_uri = ""
+skip_nonce_check = false
+
+[storage]
+file_size_limit = "10MiB"
+
+# One function handles create_hold / verify / release and the Whish callback.
+# Whish calls the callback without a Supabase token, so the gateway check is off;
+# the function verifies the caller's session itself for every user action.
+[functions.escrow]
+verify_jwt = false
