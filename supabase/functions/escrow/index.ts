@@ -12,9 +12,25 @@
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
+// ---------------------------------------------------------------- config
+// Secrets pasted into the dashboard sometimes carry spaces or quotes; ignore them.
+function env(name: string): string | undefined {
+  const v = Deno.env.get(name)?.trim().replace(/^(['"])(.*)\1$/, '$2').trim()
+  return v ? v : undefined
+}
+
+/** A missing or wrong secret: reported to the caller by name so it can be fixed. */
+class ConfigError extends Error {}
+
+function requireEnv(name: string): string {
+  const v = env(name)
+  if (!v) throw new ConfigError(`the ${name} secret is missing`)
+  return v
+}
+
 // ---------------------------------------------------------------- http helpers
 const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': Deno.env.get('APP_URL') ?? '*',
+  'Access-Control-Allow-Origin': env('APP_URL')?.replace(/\/$/, '') ?? '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   Vary: 'Origin',
@@ -32,18 +48,17 @@ function json(body: unknown, status = 200): Response {
 
 function errorResponse(err: unknown): Response {
   if (err instanceof HttpError) return json({ error: err.message, code: err.code }, err.status)
+  if (err instanceof ConfigError) {
+    console.error('[escrow] config:', err.message)
+    return json({ error: `Payment setup is incomplete: ${err.message} (Edge Functions → Secrets)`, code: 'config' }, 500)
+  }
   const pg = err as { code?: string; message?: string }
   if (pg?.code === 'P0001') return json({ error: pg.message, code: 'invalid_transition' }, 409)
   if (pg?.code === 'P0002') return json({ error: pg.message, code: 'not_found' }, 404)
   if (pg?.code === '42501') return json({ error: pg.message, code: 'forbidden' }, 403)
-  console.error(err)
-  return json({ error: 'Internal error' }, 500)
-}
-
-function requireEnv(name: string): string {
-  const v = Deno.env.get(name)
-  if (!v) throw new Error(`Missing env var ${name}`)
-  return v
+  console.error('[escrow] unexpected error:', err)
+  const detail = pg?.message ? `: ${pg.message}` : ''
+  return json({ error: `Internal error${detail}`, code: 'internal' }, 500)
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -54,7 +69,7 @@ function assertUuid(v: unknown, field: string): string {
 
 const appUrl = () => requireEnv('APP_URL').replace(/\/$/, '')
 const functionsBaseUrl = () =>
-  (Deno.env.get('PUBLIC_FUNCTIONS_URL') ?? `${requireEnv('SUPABASE_URL')}/functions/v1`).replace(/\/$/, '')
+  (env('PUBLIC_FUNCTIONS_URL') ?? `${requireEnv('SUPABASE_URL')}/functions/v1`).replace(/\/$/, '')
 
 // ---------------------------------------------------------------- supabase
 let _admin: SupabaseClient | null = null
@@ -99,10 +114,23 @@ class WhishError extends Error {
 }
 
 function whishMode(): 'live' | 'mock' {
-  const mode = Deno.env.get('WHISH_MODE')
-  if (mode !== 'live' && mode !== 'mock') throw new Error('Set WHISH_MODE to "live" or "mock"')
+  const mode = env('WHISH_MODE')?.toLowerCase()
+  if (mode !== 'live' && mode !== 'mock') {
+    throw new ConfigError(mode ? `WHISH_MODE is "${mode}"; set it to live or mock` : 'the WHISH_MODE secret is missing (use mock for testing)')
+  }
   if (mode === 'mock') console.warn('[whish] MOCK MODE: no real money moves. Never enable in production.')
   return mode
+}
+
+/** Every secret a payment needs, checked before anything is written. */
+function checkPaymentConfig(): void {
+  const mode = whishMode()
+  appUrl()
+  functionsBaseUrl()
+  requireEnv('WHISH_CALLBACK_SECRET')
+  if (mode === 'live') {
+    for (const name of ['WHISH_BASE_URL', 'WHISH_CHANNEL', 'WHISH_SECRET', 'WHISH_WEBSITE_URL']) requireEnv(name)
+  }
 }
 
 async function whishRequest<T>(path: string, body: unknown): Promise<T> {
@@ -264,7 +292,7 @@ async function createHold(req: Request, body: Body): Promise<Response> {
   const orderId = assertUuid(body.order_id, 'order_id')
   if (caller.kyc_status !== 'verified') throw new HttpError(403, 'Verify your identity before paying', 'kyc_required')
 
-  whishMode() // fail on misconfiguration before writing anything
+  checkPaymentConfig() // fail on misconfiguration before writing anything
 
   const { data: orderData, error: oErr } = await db()
     .from('orders')
@@ -362,11 +390,12 @@ async function createHold(req: Request, body: Body): Promise<Response> {
       mode: whishMode(),
     })
   } catch (err) {
-    const reason = err instanceof WhishError ? err.message : 'Whish request failed'
+    const reason = err instanceof WhishError || err instanceof ConfigError ? err.message : 'Whish request failed'
     console.error('[escrow] Whish createPayment failed', err)
     await transition(escrow.id, 'FAILED', { type: 'system' }, reason, {
       whish_error: err instanceof WhishError ? (err.body ?? null) : String(err),
     })
+    if (err instanceof ConfigError) throw err
     throw new HttpError(502, `Could not start Whish payment: ${reason}`, 'whish_unavailable')
   }
 }
