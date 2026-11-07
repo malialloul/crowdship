@@ -124,6 +124,8 @@ export type Database = {
           refunded_at: string | null
           created_at: string
           updated_at: string
+          platform_fee: number
+          fee_payer: string
         }
         Insert: {
           id?: string
@@ -142,6 +144,8 @@ export type Database = {
           refunded_at?: string | null
           created_at?: string
           updated_at?: string
+          platform_fee?: number
+          fee_payer?: string
         }
         Update: {
           id?: string
@@ -160,6 +164,8 @@ export type Database = {
           refunded_at?: string | null
           created_at?: string
           updated_at?: string
+          platform_fee?: number
+          fee_payer?: string
         }
         Relationships: [
           {
@@ -315,7 +321,7 @@ export type Database = {
           quantity: number
           item_total: number
           currency: Database['public']['Enums']['escrow_currency']
-          weight_kg: number
+          weight_kg: number | null
           origin_country: string
           reward_amount: number
           needed_by: string | null
@@ -327,6 +333,15 @@ export type Database = {
           cancelled_at: string | null
           created_at: string
           updated_at: string
+          handover: Database['public']['Enums']['handover_method'] | null
+          hub_id: string | null
+          proof_status: string
+          proof_rejection_reason: string | null
+          proof_submitted_at: string | null
+          proof_approved_at: string | null
+          delivered_via: Database['public']['Enums']['handover_method'] | null
+          delivered_at: string | null
+          hub_dropoff_at: string | null
         }
         Insert: {
           id?: string
@@ -338,7 +353,7 @@ export type Database = {
           item_price: number
           quantity?: number
           currency?: Database['public']['Enums']['escrow_currency']
-          weight_kg: number
+          weight_kg?: number | null
           origin_country: string
           reward_amount: number
           needed_by?: string | null
@@ -350,6 +365,15 @@ export type Database = {
           cancelled_at?: string | null
           created_at?: string
           updated_at?: string
+          handover?: Database['public']['Enums']['handover_method'] | null
+          hub_id?: string | null
+          proof_status?: string
+          proof_rejection_reason?: string | null
+          proof_submitted_at?: string | null
+          proof_approved_at?: string | null
+          delivered_via?: Database['public']['Enums']['handover_method'] | null
+          delivered_at?: string | null
+          hub_dropoff_at?: string | null
         }
         Update: {
           id?: string
@@ -361,7 +385,7 @@ export type Database = {
           item_price?: number
           quantity?: number
           currency?: Database['public']['Enums']['escrow_currency']
-          weight_kg?: number
+          weight_kg?: number | null
           origin_country?: string
           reward_amount?: number
           needed_by?: string | null
@@ -373,6 +397,15 @@ export type Database = {
           cancelled_at?: string | null
           created_at?: string
           updated_at?: string
+          handover?: Database['public']['Enums']['handover_method'] | null
+          hub_id?: string | null
+          proof_status?: string
+          proof_rejection_reason?: string | null
+          proof_submitted_at?: string | null
+          proof_approved_at?: string | null
+          delivered_via?: Database['public']['Enums']['handover_method'] | null
+          delivered_at?: string | null
+          hub_dropoff_at?: string | null
         }
         Relationships: [
           {
@@ -467,6 +500,9 @@ export type Database = {
           message: string | null
           created_at: string
           updated_at: string
+          weight_kg: number | null
+          handover: Database['public']['Enums']['handover_method']
+          hub_id: string | null
         }
         Insert: {
           id?: string
@@ -479,6 +515,9 @@ export type Database = {
           message?: string | null
           created_at?: string
           updated_at?: string
+          weight_kg?: number | null
+          handover?: Database['public']['Enums']['handover_method']
+          hub_id?: string | null
         }
         Update: {
           id?: string
@@ -491,6 +530,9 @@ export type Database = {
           message?: string | null
           created_at?: string
           updated_at?: string
+          weight_kg?: number | null
+          handover?: Database['public']['Enums']['handover_method']
+          hub_id?: string | null
         }
         Relationships: [
           {
@@ -592,6 +634,183 @@ export type Database = {
           },
         ]
       }
+      app_settings: {
+        Row: {
+          id: boolean
+          service_fee_usd: number
+          service_fee_lbp: number
+          fee_payer: string
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          service_fee_usd?: number
+          service_fee_lbp?: number
+          fee_payer?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          service_fee_usd?: number
+          service_fee_lbp?: number
+          fee_payer?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      hubs: {
+        Row: {
+          id: string
+          name: string
+          area: string
+          address: string | null
+          opening_hours: string | null
+          maps_url: string | null
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          area: string
+          address?: string | null
+          opening_hours?: string | null
+          maps_url?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          area?: string
+          address?: string | null
+          opening_hours?: string | null
+          maps_url?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      hub_operators: {
+        Row: {
+          hub_id: string
+          user_id: string
+          created_at: string
+        }
+        Insert: {
+          hub_id: string
+          user_id: string
+          created_at?: string
+        }
+        Update: {
+          hub_id?: string
+          user_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'hub_operators_hub_id_fkey'
+            columns: ['hub_id']
+            isOneToOne: false
+            referencedRelation: 'hubs'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'hub_operators_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      order_proofs: {
+        Row: {
+          id: string
+          order_id: string
+          kind: string
+          path: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          kind: string
+          path: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          kind?: string
+          path?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'order_proofs_order_id_fkey'
+            columns: ['order_id']
+            isOneToOne: false
+            referencedRelation: 'orders'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      handover_otps: {
+        Row: {
+          order_id: string
+          code: string
+          attempts: number
+          created_at: string
+        }
+        Insert: {
+          order_id: string
+          code: string
+          attempts?: number
+          created_at?: string
+        }
+        Update: {
+          order_id?: string
+          code?: string
+          attempts?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'handover_otps_order_id_fkey'
+            columns: ['order_id']
+            isOneToOne: false
+            referencedRelation: 'orders'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      hub_tokens: {
+        Row: {
+          order_id: string
+          token: string
+          created_at: string
+        }
+        Insert: {
+          order_id: string
+          token: string
+          created_at?: string
+        }
+        Update: {
+          order_id?: string
+          token?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'hub_tokens_order_id_fkey'
+            columns: ['order_id']
+            isOneToOne: false
+            referencedRelation: 'orders'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: { [_ in never]: never }
     Functions: {
@@ -614,9 +833,35 @@ export type Database = {
       }
       is_verified: { Args: never; Returns: boolean }
       make_offer: {
-        Args: { p_order_id: string; p_trip_id: string; p_amount: number; p_message?: string | null }
+        Args: {
+          p_order_id: string
+          p_trip_id: string
+          p_amount: number
+          p_weight_kg: number
+          p_handover?: Database['public']['Enums']['handover_method']
+          p_hub_id?: string | null
+          p_message?: string | null
+        }
         Returns: string
       }
+      submit_proof: { Args: { p_order_id: string; p_item_paths: string[]; p_receipt_paths: string[] }; Returns: undefined }
+      review_proof: { Args: { p_order_id: string; p_approve: boolean; p_reason?: string | null }; Returns: undefined }
+      confirm_handover: { Args: { p_order_id: string; p_code: string }; Returns: string }
+      regenerate_handover_code: { Args: { p_order_id: string }; Returns: undefined }
+      hub_lookup: {
+        Args: { p_token: string }
+        Returns: {
+          order_id: string
+          title: string
+          image_url: string | null
+          status: Database['public']['Enums']['order_status']
+          traveler_name: string | null
+          hub_id: string
+          hub_name: string
+        }[]
+      }
+      hub_confirm_dropoff: { Args: { p_token: string }; Returns: string }
+      is_hub_operator: { Args: { p_hub_id: string }; Returns: boolean }
       respond_offer: {
         Args: { p_offer_id: string; p_action: 'accept' | 'counter' | 'decline' | 'withdraw'; p_amount?: number | null }
         Returns: Database['public']['Tables']['offers']['Row']
@@ -643,6 +888,7 @@ export type Database = {
       trip_status: 'OPEN' | 'CLOSED' | 'CANCELLED'
       offer_status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN'
       offer_party: 'shopper' | 'traveler'
+      handover_method: 'in_person' | 'hub'
     }
     CompositeTypes: { [_ in never]: never }
   }
@@ -665,4 +911,8 @@ export type Offer = Tables<'offers'>
 export type OfferEvent = Tables<'offer_events'>
 export type AppNotification = Tables<'notifications'>
 export type OrderStatus = Enums<'order_status'>
+export type Hub = Tables<'hubs'>
+export type OrderProof = Tables<'order_proofs'>
+export type AppSettings = Tables<'app_settings'>
+export type HandoverMethod = Enums<'handover_method'>
 export type PublicProfile = Database['public']['Functions']['public_profiles']['Returns'][number]

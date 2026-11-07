@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router'
+import { myHubs } from '../services/handover'
 import { LogOut, Search } from 'lucide-react'
 import { useAuth } from '../auth/auth-context'
 import { NotificationBell } from './NotificationBell'
@@ -22,6 +24,14 @@ const linkCls = ({ isActive }: { isActive: boolean }) =>
 
 export function AppShell() {
   const { profile, signOut } = useAuth()
+  const [hubStaff, setHubStaff] = useState(false)
+
+  useEffect(() => {
+    if (!profile) return
+    myHubs(profile.id)
+      .then((h) => setHubStaff(h.length > 0))
+      .catch(() => setHubStaff(false))
+  }, [profile])
 
   return (
     <div className="min-h-dvh">
@@ -43,6 +53,11 @@ export function AppShell() {
             <NavLink to="/profile" className={linkCls}>
               Profile
             </NavLink>
+            {(hubStaff || profile?.role === 'admin') && (
+              <NavLink to="/hub" className={linkCls}>
+                Hub
+              </NavLink>
+            )}
             {profile?.role === 'admin' && (
               <>
                 <NavLink to="/admin/kyc" className={linkCls}>

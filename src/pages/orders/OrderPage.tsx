@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { ExternalLink, Plane } from 'lucide-react'
 import { Thumb } from '../../components/Thumb'
@@ -14,7 +14,19 @@ import {
   makeOffer,
   respondOffer,
 } from '../../services/orders'
-import { eligibleTrips } from '../../services/trips'
+import { committedKg, eligibleTrips } from '../../services/trips'
+import { fetchSettings, listHubs, shopperFee } from '../../services/handover'
+import {
+  EnterCodePanel,
+  HandoverCodePanel,
+  HubAddress,
+  HubQrPanel,
+  Panel,
+  ProofReviewPanel,
+  ProofSentPanel,
+  ProofUploadPanel,
+  useProofs,
+} from './HandoverPanels'
 import { startPaymentHold } from '../../services/escrow'
 import { OrderTag } from '../../components/StatusTags'
 import { VerifyNotice } from '../../components/VerifyNotice'
@@ -22,7 +34,7 @@ import { FullPageSpinner } from '../../components/Guards'
 import { countryName, shortDate, todayIso } from '../../lib/places'
 import { messageOf } from '../../lib/errors'
 import { dateTime, money } from '../../lib/format'
-import type { Currency, Offer, OfferEvent, Order, PublicProfile, Trip } from '../../lib/database.types'
+import type { AppSettings, Currency, HandoverMethod, Hub, Offer, OfferEvent, Order, PublicProfile, Trip } from '../../lib/database.types'
 
 type Party = 'shopper' | 'traveler'
 
@@ -34,14 +46,19 @@ function amountOk(v: string, currency: Currency): number | null {
 
 // ---------------------------------------------------------------- pieces
 
-function OrderSummary({ order }: { order: Order }) {
+function handoverLabel(method: HandoverMethod | null, hub: Hub | undefined): string {
+  return method === 'hub' ? `Hub drop-off${hub ? `, ${hub.name}` : ''}` : 'In person'
+}
+
+function OrderSummary({ order, hub }: { order: Order; hub: Hub | undefined }) {
   const rows: [string, string][] = [
     ['Item', `${money(order.item_price, order.currency)}${order.quantity > 1 ? ` × ${order.quantity}` : ''}`],
     [order.agreed_reward != null ? 'Agreed reward' : 'Offered reward', money(order.agreed_reward ?? order.reward_amount, order.currency)],
     ['Ships from', countryName(order.origin_country)],
-    ['Estimated weight', `${order.weight_kg} kg`],
+    ['Weight', order.weight_kg != null ? `${order.weight_kg} kg` : 'Set by the traveler'],
   ]
   if (order.needed_by) rows.push(['Needed by', shortDate(order.needed_by)])
+  if (order.handover) rows.push(['Handover', handoverLabel(order.handover, hub)])
 
   return (
     <section className="panel overflow-hidden">
@@ -65,9 +82,9 @@ function OrderSummary({ order }: { order: Order }) {
       </div>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-t border-line px-6 py-4 sm:grid-cols-3">
         {rows.map(([k, v]) => (
-          <div key={k}>
+          <div key={k} className={`min-w-0 ${k === 'Handover' ? 'col-span-2 sm:col-span-1' : ''}`}>
             <dt className="text-sm text-mist">{k}</dt>
-            <dd className="font-semibold">{v}</dd>
+            <dd className="truncate font-semibold">{v}</dd>
           </div>
         ))}
       </dl>
@@ -106,6 +123,7 @@ function OfferCard({
   traveler,
   events,
   viewer,
+  hubs,
   onChanged,
 }: {
   offer: Offer
@@ -114,6 +132,7 @@ function OfferCard({
   traveler: PublicProfile | undefined
   events: OfferEvent[]
   viewer: Party
+  hubs: Map<string, Hub>
   onChanged: () => void
 }) {
   const [countering, setCountering] = useState(false)
@@ -177,6 +196,10 @@ function OfferCard({
               </span>
             </p>
           )}
+          <p className="truncate text-sm text-ink-soft">
+            {offer.weight_kg != null ? `${offer.weight_kg} kg, ` : ''}
+            {handoverLabel(offer.handover, offer.hub_id ? hubs.get(offer.hub_id) : undefined)}
+          </p>
         </div>
         <div className="shrink-0 text-right">
           <p className="font-display text-3xl font-bold whitespace-nowrap">{money(offer.amount, order.currency)}</p>
@@ -243,15 +266,28 @@ function OfferCard({
   )
 }
 
-function MakeOfferForm({ order, trips, onDone }: { order: Order; trips: Trip[]; onDone: () => void }) {
+function MakeOfferForm({ order, trips, hubs, onDone }: { order: Order; trips: Trip[]; hubs: Hub[]; onDone: () => void }) {
   const { profile } = useAuth()
   // Trips load after the first render, so fall back to the first one until the user picks.
   const [pickedTripId, setTripId] = useState<string | null>(null)
   const tripId = trips.some((t) => t.id === pickedTripId) ? pickedTripId! : (trips[0]?.id ?? '')
+  const trip = trips.find((t) => t.id === tripId)
   const [amount, setAmount] = useState(String(order.reward_amount))
+  const [weight, setWeight] = useState('')
+  const [handover, setHandover] = useState<HandoverMethod>('in_person')
+  const [pickedHub, setHub] = useState<string | null>(null)
+  const hubId = hubs.some((h) => h.id === pickedHub) ? pickedHub! : (hubs[0]?.id ?? null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [usedKg, setUsedKg] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!tripId) return
+    setUsedKg(null)
+    committedKg(tripId).then(setUsedKg).catch(() => setUsedKg(null))
+  }, [tripId])
+  const leftKg = trip && usedKg != null ? Math.max(0, Math.round((trip.capacity_kg - usedKg) * 10) / 10) : null
 
   if (trips.length === 0) {
     return (
@@ -273,10 +309,14 @@ function MakeOfferForm({ order, trips, onDone }: { order: Order; trips: Trip[]; 
     const v = amountOk(amount, order.currency)
     if (v === null) return setError('Enter a valid reward')
     if (!tripId) return setError('Choose your trip')
+    const kg = Number(weight.replace(',', '.'))
+    if (!(kg > 0 && kg <= 32)) return setError('Enter the weight in kg (up to 32)')
+    if (leftKg != null && kg > leftKg) return setError(`Only ${leftKg} kg left on this trip`)
+    if (handover === 'hub' && !hubId) return setError('Choose a drop-off hub')
     setBusy(true)
     setError(null)
     try {
-      await makeOffer(order.id, tripId, v, message)
+      await makeOffer({ orderId: order.id, tripId, amount: v, weightKg: Math.round(kg * 100) / 100, handover, hubId, message })
       onDone()
     } catch (err) {
       setError(messageOf(err))
@@ -305,6 +345,51 @@ function MakeOfferForm({ order, trips, onDone }: { order: Order; trips: Trip[]; 
           ))}
         </select>
       </div>
+      <div>
+        <label htmlFor="weight" className="field-label">
+          Weight with packaging (kg)
+        </label>
+        <input id="weight" className="input w-40" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0.5" />
+        <p className="field-hint">{leftKg != null ? `${leftKg} kg left on this trip. ` : ''}This comes off your luggage space once the shopper accepts.</p>
+      </div>
+      <fieldset>
+        <legend className="field-label">Handover in Lebanon</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {(
+            [
+              ['in_person', 'In person'],
+              ['hub', 'Hub drop-off'],
+            ] as const
+          ).map(([value, label]) => (
+            <label
+              key={value}
+              className={`flex h-11 cursor-pointer items-center justify-center rounded-md border text-[15px] font-semibold whitespace-nowrap ${
+                handover === value ? 'border-ink bg-ink text-white' : 'border-line bg-card text-ink-soft'
+              } ${value === 'hub' && hubs.length === 0 ? 'pointer-events-none opacity-40' : ''}`}
+            >
+              <input type="radio" name="handover" value={value} checked={handover === value} onChange={() => setHandover(value)} className="sr-only" />
+              {label}
+            </label>
+          ))}
+        </div>
+        <p className="field-hint">
+          {handover === 'hub' ? "Leave it at a hub; you're paid when the staff scan your QR code." : 'Meet the shopper; you\'re paid when they give you their code.'}
+        </p>
+      </fieldset>
+      {handover === 'hub' && hubs.length > 0 && (
+        <div>
+          <label htmlFor="hub" className="field-label">
+            Hub
+          </label>
+          <select id="hub" className="input" value={hubId ?? ''} onChange={(e) => setHub(e.target.value)}>
+            {hubs.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}, {h.area}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="amount" className="field-label">
@@ -332,10 +417,11 @@ function MakeOfferForm({ order, trips, onDone }: { order: Order; trips: Trip[]; 
   )
 }
 
-function PayPanel({ order }: { order: Order }) {
+function PayPanel({ order, settings }: { order: Order; settings: AppSettings | null }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const total = order.item_total + (order.agreed_reward ?? 0)
+  const fee = shopperFee(settings, order.currency)
+  const total = order.item_total + (order.agreed_reward ?? 0) + fee
 
   async function pay() {
     setBusy(true)
@@ -352,10 +438,27 @@ function PayPanel({ order }: { order: Order }) {
   return (
     <section className="space-y-4 rounded-xl bg-ink p-6 text-white">
       <h2 className="text-2xl text-white">Pay into escrow to lock the deal</h2>
-      <p className="text-white/75">
-        {money(order.item_total, order.currency)} for the item plus {money(order.agreed_reward ?? 0, order.currency)} reward. Whish holds
-        it; the traveler is paid only after you receive the item.
-      </p>
+      <dl className="space-y-1 text-[15px]">
+        <div className="flex justify-between gap-4">
+          <dt className="text-white/70">Item</dt>
+          <dd>{money(order.item_total, order.currency)}</dd>
+        </div>
+        <div className="flex justify-between gap-4">
+          <dt className="text-white/70">Traveler reward</dt>
+          <dd>{money(order.agreed_reward ?? 0, order.currency)}</dd>
+        </div>
+        {fee > 0 && (
+          <div className="flex justify-between gap-4">
+            <dt className="text-white/70">Service fee</dt>
+            <dd>{money(fee, order.currency)}</dd>
+          </div>
+        )}
+        <div className="flex justify-between gap-4 border-t border-white/20 pt-1 font-semibold">
+          <dt>Total</dt>
+          <dd>{money(total, order.currency)}</dd>
+        </div>
+      </dl>
+      <p className="text-white/75">Whish holds it. The traveler is paid only after you receive the item.</p>
       {error && <p className="rounded-md bg-stop-wash px-3 py-2 text-sm text-stop">{error}</p>}
       <button type="button" className="btn btn-primary w-full sm:w-auto" disabled={busy} onClick={() => void pay()}>
         {busy ? 'Opening Whish…' : `Pay ${money(total, order.currency)} with Whish`}
@@ -364,13 +467,100 @@ function PayPanel({ order }: { order: Order }) {
   )
 }
 
-function InfoPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="panel space-y-2 border-l-4 border-l-signal p-6">
-      <h2 className="text-2xl">{title}</h2>
-      <div className="text-ink-soft">{children}</div>
-    </section>
-  )
+// What each side sees at each stage, from payment to handover.
+function StatusPanels({
+  order,
+  isShopper,
+  isMyDelivery,
+  trip,
+  hub,
+  viaHub,
+  settings,
+  version,
+  onChanged,
+}: {
+  order: Order
+  isShopper: boolean
+  isMyDelivery: boolean
+  trip: Trip | undefined
+  hub: Hub | undefined
+  viaHub: boolean
+  settings: AppSettings | null
+  version: string
+  onChanged: () => void
+}) {
+  const showProofs = (isShopper || isMyDelivery) && order.status === 'PURCHASING' && order.proof_status === 'submitted'
+  const proofs = useProofs(order.id, showProofs, version)
+
+  if (order.status === 'AWAITING_PAYMENT_HOLD') {
+    if (isShopper) return <PayPanel order={order} settings={settings} />
+    if (isMyDelivery)
+      return (
+        <Panel title="Deal agreed. Wait for payment">
+          <p>Don't buy the item yet. You'll get a notification as soon as the shopper's money is held in escrow.</p>
+        </Panel>
+      )
+  }
+
+  if (order.status === 'PURCHASING') {
+    if (isMyDelivery) {
+      if (order.proof_status === 'submitted') return <ProofSentPanel proofs={proofs} />
+      return <ProofUploadPanel order={order} trip={trip} onDone={onChanged} />
+    }
+    if (isShopper) {
+      if (order.proof_status === 'submitted') return <ProofReviewPanel order={order} proofs={proofs} onDone={onChanged} />
+      return (
+        <Panel title="Payment held. The traveler is buying your item">
+          <p>
+            {order.proof_status === 'rejected'
+              ? "You asked for new photos. We'll notify you when the traveler sends them."
+              : "You'll get photos of the item and the receipt to check before they fly."}
+          </p>
+        </Panel>
+      )
+    }
+  }
+
+  if (order.status === 'IN_TRANSIT') {
+    if (isShopper) {
+      if (viaHub)
+        return (
+          <Panel title="On the way to the hub">
+            <p>The traveler will leave it here. We'll notify you when it's ready to pick up.</p>
+            {hub && <HubAddress hub={hub} />}
+          </Panel>
+        )
+      return <HandoverCodePanel order={order} version={version} />
+    }
+    if (isMyDelivery) {
+      if (viaHub) return <HubQrPanel order={order} hub={hub} version={version} />
+      return <EnterCodePanel order={order} onDone={onChanged} />
+    }
+  }
+
+  if (order.status === 'DELIVERED') {
+    if (order.delivered_via === 'hub' && isShopper)
+      return (
+        <Panel title="Ready for pickup" tone="ok">
+          <p>Your item is waiting at the hub. Bring your ID.</p>
+          {hub && <HubAddress hub={hub} />}
+        </Panel>
+      )
+    return (
+      <Panel title="Delivered" tone="ok">
+        <p>{isMyDelivery ? 'Your payment is on its way to your Whish account.' : 'The handover is done and the traveler has been paid.'}</p>
+      </Panel>
+    )
+  }
+
+  if (order.status === 'CANCELLED')
+    return (
+      <Panel title="Cancelled">
+        <p>This order is closed.</p>
+      </Panel>
+    )
+
+  return null
 }
 
 // ---------------------------------------------------------------- page
@@ -387,6 +577,8 @@ export default function OrderPage() {
   const [error, setError] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [hubs, setHubs] = useState<Hub[]>([])
+  const [settings, setSettings] = useState<AppSettings | null>(null)
 
   const load = useCallback(async () => {
     if (!user) return
@@ -395,11 +587,15 @@ export default function OrderPage() {
       setOrder(o)
       if (!o) return
       const offs = await listOffersForOrder(o.id)
-      const [ts, evs, ppl] = await Promise.all([
-        listTripsByIds([...new Set(offs.map((x) => x.trip_id))]),
+      const [ts, evs, ppl, hs, st] = await Promise.all([
+        listTripsByIds([...new Set([...offs.map((x) => x.trip_id), ...(o.trip_id ? [o.trip_id] : [])])]),
         listOfferEvents(offs.map((x) => x.id)),
         fetchPublicProfiles([...offs.map((x) => x.traveler_id), o.shopper_id]),
+        listHubs().catch(() => [] as Hub[]),
+        fetchSettings().catch(() => null),
       ])
+      setHubs(hs)
+      setSettings(st)
       setOffers(offs)
       setTrips(new Map(ts.map((t) => [t.id, t])))
       setEvents(evs)
@@ -438,6 +634,10 @@ export default function OrderPage() {
   const hasLiveOwnOffer = !isShopper && offers.some((o) => o.traveler_id === user.id && o.status === 'PENDING')
   const isMyDelivery = order.traveler_id === user.id
   const shopperName = people.get(order.shopper_id)?.display_name
+  const hubMap = new Map(hubs.map((h) => [h.id, h]))
+  const orderHub = order.hub_id ? hubMap.get(order.hub_id) : undefined
+  const viaHub = order.handover === 'hub'
+  const version = `${order.updated_at}|${order.proof_status}|${order.status}`
 
   async function cancel() {
     if (!order) return
@@ -461,6 +661,7 @@ export default function OrderPage() {
       traveler={people.get(o.traveler_id)}
       events={events.filter((e) => e.offer_id === o.id)}
       viewer={viewer}
+      hubs={hubMap}
       onChanged={() => void load()}
     />
   )
@@ -471,33 +672,21 @@ export default function OrderPage() {
         ← {isShopper || isMyDelivery ? 'Orders' : 'Trips'}
       </Link>
 
-      <OrderSummary order={order} />
+      <OrderSummary order={order} hub={orderHub} />
       {!isShopper && shopperName && <p className="text-sm text-ink-soft">Posted by {shopperName}</p>}
       {error && <p className="alert-error">{error}</p>}
 
-      {/* Shopper */}
-      {isShopper && order.status === 'AWAITING_PAYMENT_HOLD' && <PayPanel order={order} />}
-      {isShopper && order.status === 'PURCHASING' && (
-        <InfoPanel title="Payment held. The traveler is buying your item">
-          Your money stays in Whish escrow until you receive the item.
-        </InfoPanel>
-      )}
-
-      {/* Traveler with the accepted deal */}
-      {isMyDelivery && order.status === 'AWAITING_PAYMENT_HOLD' && (
-        <InfoPanel title="Deal agreed. Wait for payment">
-          Don't buy the item yet. You'll get a notification as soon as the shopper's money is held in escrow.
-        </InfoPanel>
-      )}
-      {isMyDelivery && order.status === 'PURCHASING' && (
-        <InfoPanel title="Payment secured. Buy the item">
-          {money(order.item_total + (order.agreed_reward ?? 0), order.currency)} is held in Whish escrow. Buy the item and keep the
-          receipt; you're paid after the handover in Beirut.
-        </InfoPanel>
-      )}
-
-      {order.status === 'DELIVERED' && <InfoPanel title="Delivered">The handover is done and the traveler has been paid.</InfoPanel>}
-      {order.status === 'CANCELLED' && <InfoPanel title="Cancelled">This order is closed.</InfoPanel>}
+      <StatusPanels
+        order={order}
+        isShopper={isShopper}
+        isMyDelivery={isMyDelivery}
+        trip={order.trip_id ? trips.get(order.trip_id) : undefined}
+        hub={orderHub}
+        viaHub={viaHub}
+        settings={settings}
+        version={version}
+        onChanged={() => void load()}
+      />
 
       {/* Offers */}
       {(liveOffers.length > 0 || (isShopper && order.status === 'SEARCHING_TRAVELER')) && (
@@ -516,7 +705,7 @@ export default function OrderPage() {
       )}
 
       {!isShopper && order.status === 'SEARCHING_TRAVELER' && !hasLiveOwnOffer && (
-        <MakeOfferForm order={order} trips={myTrips} onDone={() => void load()} />
+        <MakeOfferForm order={order} trips={myTrips} hubs={hubs} onDone={() => void load()} />
       )}
 
       {pastOffers.length > 0 && (

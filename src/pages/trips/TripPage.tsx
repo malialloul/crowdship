@@ -121,7 +121,7 @@ export default function TripPage() {
           <div>
             <h2 className="text-2xl">Orders on your route ({matches.length})</h2>
             <p className="text-ink-soft">
-              Open orders from {countryName(trip.origin_country)} that fit in {left} kg and are needed after you land.
+              Open orders from {countryName(trip.origin_country)} needed after you land. You set the weight in your offer ({left} kg left).
             </p>
           </div>
           <VerifyNotice action="make offers" />
@@ -130,7 +130,7 @@ export default function TripPage() {
           ) : (
             <ul className="panel divide-y divide-line">
               {matches.map((o) => (
-                <OrderRow key={o.id} order={o} note={offered.has(o.id) ? 'You made an offer' : `${o.weight_kg} kg. Tap to make an offer`} />
+                <OrderRow key={o.id} order={o} note={offered.has(o.id) ? 'You made an offer' : 'Tap to make an offer'} />
               ))}
             </ul>
           )}

@@ -2,6 +2,7 @@
 -- Runs in a transaction and rolls back.
 --   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/sprint2.sql
 -- Every line should end in |t or print a NOTICE "ok". Any failure stops the run.
+-- Requires migrations 1–4.
 \set ON_ERROR_STOP on
 begin;
 
@@ -21,8 +22,8 @@ grant all on ids to authenticated, service_role;
 set role authenticated;
 select set_config('request.jwt.claim.sub', 'd0000000-0000-0000-0000-00000000000d', true);
 do $$ begin
-  insert into public.orders (title, item_price, weight_kg, origin_country, reward_amount)
-  values ('Nike Air Max 90', 120, 1.5, 'AE', 20);
+  insert into public.orders (title, item_price, origin_country, reward_amount)
+  values ('Nike Air Max 90', 120, 'AE', 20);
   raise exception 'SHOULD NOT REACH';
 exception when insufficient_privilege then raise notice 'T1 ok: unverified user cannot post an order';
 end $$;
@@ -30,21 +31,21 @@ end $$;
 -- ---------- Shopper posts ----------
 select set_config('request.jwt.claim.sub', 'a0000000-0000-0000-0000-00000000000a', true);
 do $$ begin
-  insert into public.orders (title, item_price, weight_kg, origin_country, reward_amount, status)
-  values ('Hack', 1, 1, 'AE', 0, 'PURCHASING');
+  insert into public.orders (title, item_price, origin_country, reward_amount, status)
+  values ('Hack', 1, 'AE', 0, 'PURCHASING');
   raise exception 'SHOULD NOT REACH';
 exception when insufficient_privilege then raise notice 'T2 ok: shopper cannot set order status';
 end $$;
 do $$ begin
-  insert into public.orders (title, item_price, weight_kg, origin_country, reward_amount)
-  values ('Local', 10, 1, 'LB', 5);
+  insert into public.orders (title, item_price, origin_country, reward_amount)
+  values ('Local', 10, 'LB', 5);
   raise exception 'SHOULD NOT REACH';
 exception when check_violation then raise notice 'T3 ok: origin cannot be Lebanon';
 end $$;
 
 with x as (
-  insert into public.orders (item_url, title, item_price, quantity, weight_kg, origin_country, reward_amount)
-  values ('https://www.amazon.ae/dp/B0TEST', 'AirPods Pro 2', 100, 2, 2, 'AE', 20)
+  insert into public.orders (item_url, title, item_price, quantity, origin_country, reward_amount)
+  values ('https://www.amazon.ae/dp/B0TEST', 'AirPods Pro 2', 100, 2, 'AE', 20)
   returning id
 ) insert into ids select 'order1', id from x;
 select 'T4 order posted' as test,
@@ -72,15 +73,15 @@ with x as (
 ) insert into ids select 'tripTR', id from x;
 select 'T8 other route does not match' as test, count(*) = 0 as ok from public.matching_orders((select v from ids where k = 'tripTR'));
 do $$ begin
-  perform public.make_offer((select v from ids where k = 'order1'), (select v from ids where k = 'tripTR'), 20);
+  perform public.make_offer((select v from ids where k = 'order1'), (select v from ids where k = 'tripTR'), 20, 2);
   raise exception 'SHOULD NOT REACH';
 exception when raise_exception then raise notice 'T9 ok: cannot offer from the wrong country';
 end $$;
 
 -- Offer at the shopper's reward
-insert into ids select 'offerT', public.make_offer((select v from ids where k = 'order1'), (select v from ids where k = 'tripT'), 20, 'Landing Friday');
+insert into ids select 'offerT', public.make_offer((select v from ids where k = 'order1'), (select v from ids where k = 'tripT'), 20, 2, 'in_person', null, 'Landing Friday');
 do $$ begin
-  perform public.make_offer((select v from ids where k = 'order1'), (select v from ids where k = 'tripT'), 25);
+  perform public.make_offer((select v from ids where k = 'order1'), (select v from ids where k = 'tripT'), 25, 2);
   raise exception 'SHOULD NOT REACH';
 exception when raise_exception then raise notice 'T10 ok: one open offer per traveler';
 end $$;
@@ -105,7 +106,7 @@ with x as (
   insert into public.trips (origin_country, origin_city, travel_date, capacity_kg)
   values ('AE', 'Abu Dhabi', current_date + 2, 5) returning id
 ) insert into ids select 'tripT2', id from x;
-insert into ids select 'offerT2', public.make_offer((select v from ids where k = 'order1'), (select v from ids where k = 'tripT2'), 18);
+insert into ids select 'offerT2', public.make_offer((select v from ids where k = 'order1'), (select v from ids where k = 'tripT2'), 18, 1.5);
 select 'T15 traveler sees only own offers' as test, count(*) = 1 as ok from public.offers;
 
 -- ---------- Traveler accepts the counter ----------
@@ -114,7 +115,7 @@ select 'T16 traveler notified of counter' as test, count(*) = 1 as ok from publi
 select (public.respond_offer((select v from ids where k = 'offerT'), 'accept')).status = 'ACCEPTED' as accepted;
 select 'T17 order locked' as test,
   status = 'AWAITING_PAYMENT_HOLD' and agreed_reward = 15 and traveler_id = 'b0000000-0000-0000-0000-00000000000b'
-  and trip_id = (select v from ids where k = 'tripT') as ok
+  and trip_id = (select v from ids where k = 'tripT') and weight_kg = 2 as ok
   from public.orders where id = (select v from ids where k = 'order1');
 select 'T18 committed kg' as test, public.trip_committed_kg((select v from ids where k = 'tripT')) = 2 as ok;
 do $$ begin
@@ -167,11 +168,11 @@ reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub', 'a0000000-0000-0000-0000-00000000000a', true);
 with x as (
-  insert into public.orders (title, item_price, weight_kg, origin_country, reward_amount, needed_by)
-  values ('Kindle Paperwhite', 150, 0.5, 'AE', 25, current_date + 30) returning id
+  insert into public.orders (title, item_price, origin_country, reward_amount, needed_by)
+  values ('Kindle Paperwhite', 150, 'AE', 25, current_date + 30) returning id
 ) insert into ids select 'order2', id from x;
 select set_config('request.jwt.claim.sub', 'b0000000-0000-0000-0000-00000000000b', true);
-insert into ids select 'offer2', public.make_offer((select v from ids where k = 'order2'), (select v from ids where k = 'tripT'), 25);
+insert into ids select 'offer2', public.make_offer((select v from ids where k = 'order2'), (select v from ids where k = 'tripT'), 25, 0.5);
 select set_config('request.jwt.claim.sub', 'a0000000-0000-0000-0000-00000000000a', true);
 select (public.respond_offer((select v from ids where k = 'offer2'), 'accept')).status as shopper_accepts;
 select set_config('request.jwt.claim.sub', 'b0000000-0000-0000-0000-00000000000b', true);
@@ -182,7 +183,7 @@ select 'T26 order reopened' as test,
 
 -- ---------- Shopper cancels ----------
 select set_config('request.jwt.claim.sub', 'c0000000-0000-0000-0000-00000000000c', true);
-insert into ids select 'offer3', public.make_offer((select v from ids where k = 'order2'), (select v from ids where k = 'tripT2'), 30);
+insert into ids select 'offer3', public.make_offer((select v from ids where k = 'order2'), (select v from ids where k = 'tripT2'), 30, 0.5);
 select set_config('request.jwt.claim.sub', 'a0000000-0000-0000-0000-00000000000a', true);
 select public.cancel_order((select v from ids where k = 'order2'));
 select 'T27 cancelled, open offer closed' as test,

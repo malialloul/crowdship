@@ -33,6 +33,21 @@ Stack: React 19 + TypeScript + Vite, Tailwind CSS v4, Supabase (Postgres, Auth, 
 | 2.3 | Shopper alerted to new offers | `notifications` table + Supabase Realtime → bell and toast |
 | 2.3 | Accepting locks the order to `AWAITING_PAYMENT_HOLD` | `respond_offer('accept')`; other offers auto-declined; shopper then pays via `escrow` `create_hold` (amounts read from the order) |
 
+### Sprint 3
+
+| Story | AC | Implementation |
+|---|---|---|
+| 3.1 | Traveler uploads item + receipt photos before the flight | Order page → `order-proofs` bucket + `submit_proof()` (blocked after the travel date) |
+| 3.1 | Shopper approves the proof | `review_proof(approve)` or asks for new photos with a reason |
+| 3.1 | Order moves to `IN_TRANSIT` | on approval; the handover secret is created at the same moment |
+| 3.2 | 6-digit code only on the shopper's screen | `handover_otps` (RLS: shopper only), strong randomness, 5 tries then locked; shopper can make a new code |
+| 3.2 | Traveler enters it at handover | `confirm_handover()` |
+| 3.2 | Valid code releases funds `HELD → RELEASED` | same transaction; payout queued to the traveler's Whish number |
+| 3.3 | Traveler picks in-person or hub drop-off while bidding | offer form: weight, handover method, hub |
+| 3.3 | Hub drop-off: QR for the hub operator to scan and release | `hub_tokens` (RLS: traveler only) → QR → `/hub/scan/:token` → `hub_confirm_dropoff()`; staff listed in `hub_operators` |
+
+Also in this round: the **traveler sets the weight** in their offer (it comes off the trip's space when accepted), and a **service fee** (default $1, `app_settings`) is added to what the shopper pays and kept by the platform; set `fee_payer = 'traveler'` to take it from the payout instead.
+
 **Smart search** (`/search`, also on the Orders page): type an item, pick a country, and get shops with the address when it has a store, a link to its website, a direct link to the item, and "Request this" to prefill an order. The `product-search` Edge Function queries [Serper](https://serper.dev) (Google web, shopping and Places results) and needs the `SERPER_API_KEY` secret. Results are cached for 30 minutes per query.
 
 ```
@@ -57,7 +72,7 @@ Enforced in Postgres twice: `escrow_transition()` checks the move, and a trigger
 supabase/
   migrations/   profiles + KYC + storage, escrow + payouts
   functions/    escrow/ (create_hold, verify, release, Whish callback), product-preview/, product-search/
-  tests/        sprint1.sql (32 checks), sprint2.sql (31 checks)
+  tests/        sprint1.sql (32 checks), sprint2.sql (31), sprint3.sql (32)
   config.toml   local auth (test OTP numbers), Google, Edge Function JWT settings
 src/
   auth/         session + profile context

@@ -37,7 +37,10 @@ function TripRow({ trip, activity }: { trip: Trip; activity?: TripActivity }) {
             {trip.origin_city} <span className="text-mist">to</span> Beirut
           </p>
           <p className="truncate text-sm text-ink-soft">
-            {countryName(trip.origin_country)}, {trip.capacity_kg} kg of space
+            {countryName(trip.origin_country)},{' '}
+            {activity?.usedKg
+              ? `${Math.max(0, Math.round((trip.capacity_kg - activity.usedKg) * 10) / 10)} of ${trip.capacity_kg} kg free`
+              : `${trip.capacity_kg} kg of space`}
           </p>
           {details.length > 0 && <p className="truncate text-sm font-semibold text-ink">{details.join(', ')}</p>}
         </div>

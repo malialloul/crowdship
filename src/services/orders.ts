@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { invokeFunction } from '../lib/errors'
-import type { Currency, Offer, OfferEvent, Order, PublicProfile, Trip } from '../lib/database.types'
+import type { Currency, HandoverMethod, Offer, OfferEvent, Order, PublicProfile, Trip } from '../lib/database.types'
 
 export interface NewOrder {
   item_url: string | null
@@ -10,7 +10,6 @@ export interface NewOrder {
   item_price: number
   quantity: number
   currency: Currency
-  weight_kg: number
   origin_country: string
   reward_amount: number
   needed_by: string | null
@@ -101,12 +100,25 @@ export async function listTripsByIds(ids: string[]): Promise<Trip[]> {
   return data
 }
 
-export async function makeOffer(orderId: string, tripId: string, amount: number, message?: string): Promise<string> {
+export interface OfferInput {
+  orderId: string
+  tripId: string
+  amount: number
+  weightKg: number
+  handover: HandoverMethod
+  hubId: string | null
+  message?: string
+}
+
+export async function makeOffer(input: OfferInput): Promise<string> {
   const { data, error } = await supabase.rpc('make_offer', {
-    p_order_id: orderId,
-    p_trip_id: tripId,
-    p_amount: amount,
-    p_message: message?.trim() || null,
+    p_order_id: input.orderId,
+    p_trip_id: input.tripId,
+    p_amount: input.amount,
+    p_weight_kg: input.weightKg,
+    p_handover: input.handover,
+    p_hub_id: input.handover === 'hub' ? input.hubId : null,
+    p_message: input.message?.trim() || null,
   })
   if (error) throw error
   return data

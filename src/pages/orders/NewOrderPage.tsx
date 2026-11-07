@@ -35,7 +35,6 @@ export default function NewOrderPage() {
   const [price, setPrice] = useState(prefill?.price && prefill.currency === 'USD' ? String(prefill.price) : '')
   const [quantity, setQuantity] = useState('1')
   const [currency, setCurrency] = useState<Currency>('USD')
-  const [weight, setWeight] = useState('')
   const [country, setCountry] = useState(prefill?.country ?? '')
   const [reward, setReward] = useState('')
   const [neededBy, setNeededBy] = useState('')
@@ -72,12 +71,10 @@ export default function NewOrderPage() {
     setError(null)
     const p = num(price)
     const q = Math.round(num(quantity))
-    const w = num(weight)
     const r = num(reward)
     if (title.trim().length < 3) return setError('Give the item a name')
     if (!(p > 0)) return setError('Enter the item price')
     if (!(q >= 1 && q <= 20)) return setError('Quantity must be between 1 and 20')
-    if (!(w > 0 && w <= 32)) return setError('Estimated weight must be between 0.1 and 32 kg')
     if (!country) return setError('Choose the country the item ships from')
     if (!(r >= 0)) return setError('Enter the reward you offer the traveler (0 or more)')
     if (url.trim() && !/^https?:\/\//i.test(url.trim())) return setError('The shop link must start with https://')
@@ -92,7 +89,6 @@ export default function NewOrderPage() {
         item_price: p,
         quantity: q,
         currency,
-        weight_kg: w,
         origin_country: country,
         reward_amount: r,
         needed_by: neededBy || null,
@@ -178,7 +174,7 @@ export default function NewOrderPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div>
           <div>
             <label htmlFor="country" className="field-label">
               Ships from
@@ -194,12 +190,7 @@ export default function NewOrderPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="weight" className="field-label">
-              Estimated weight (kg)
-            </label>
-            <input id="weight" className="input" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0.5" />
-          </div>
+          <p className="field-hint">The traveler weighs the item and includes the weight in their offer.</p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

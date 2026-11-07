@@ -88,3 +88,21 @@ export async function markPayoutPaid(payoutId: string, reference: string): Promi
   const { error } = await supabase.rpc('mark_payout_paid', { p_payout_id: payoutId, p_reference: reference })
   if (error) throw error
 }
+
+/** Service fees kept by the platform on released orders, per currency. */
+export async function feesEarned(): Promise<{ currency: Currency; total: number; orders: number }[]> {
+  const { data, error } = await supabase
+    .from('escrow_transactions')
+    .select('platform_fee, currency')
+    .eq('status', 'RELEASED')
+    .gt('platform_fee', 0)
+  if (error) throw error
+  const byCur = new Map<Currency, { total: number; orders: number }>()
+  for (const r of data) {
+    const cur = byCur.get(r.currency) ?? { total: 0, orders: 0 }
+    cur.total += Number(r.platform_fee)
+    cur.orders += 1
+    byCur.set(r.currency, cur)
+  }
+  return [...byCur].map(([currency, v]) => ({ currency, ...v }))
+}

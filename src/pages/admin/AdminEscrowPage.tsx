@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  feesEarned,
   listEscrowsAdmin,
   listQueuedPayouts,
   markPayoutPaid,
@@ -112,12 +113,14 @@ export default function AdminEscrowPage() {
   const [rows, setRows] = useState<AdminEscrow[] | null>(null)
   const [payouts, setPayouts] = useState<AdminPayout[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [fees, setFees] = useState<Awaited<ReturnType<typeof feesEarned>>>([])
 
   const load = useCallback(async (f: EscrowStatus | 'ALL') => {
     try {
-      const [e, p] = await Promise.all([listEscrowsAdmin(f), listQueuedPayouts()])
+      const [e, p, fe] = await Promise.all([listEscrowsAdmin(f), listQueuedPayouts(), feesEarned()])
       setRows(e)
       setPayouts(p)
+      setFees(fe)
       setError(null)
     } catch (err) {
       setError(messageOf(err))
@@ -139,6 +142,18 @@ export default function AdminEscrowPage() {
       </div>
 
       {error && <p className="alert-error">{error}</p>}
+
+      <section className="flex flex-wrap gap-3">
+        <div className="rounded-xl bg-ink px-5 py-4 text-white">
+          <p className="text-sm text-white/60">Service fees earned</p>
+          <p className="font-display text-3xl font-bold text-signal">
+            {fees.length === 0 ? money(0, 'USD') : fees.map((f) => money(f.total, f.currency)).join(' + ')}
+          </p>
+          <p className="text-sm text-white/60">
+            {fees.reduce((n, f) => n + f.orders, 0)} completed order{fees.reduce((n, f) => n + f.orders, 0) === 1 ? '' : 's'}
+          </p>
+        </div>
+      </section>
 
       {payouts && payouts.length > 0 && (
         <section className="space-y-3">
@@ -180,6 +195,7 @@ export default function AdminEscrowPage() {
                       {money(e.total_amount, e.currency)}{' '}
                       <span className="text-[15px] font-medium text-mist">
                         item {money(e.item_amount, e.currency)} + reward {money(e.reward_amount, e.currency)}
+                        {e.platform_fee > 0 && ` + fee ${money(e.platform_fee, e.currency)}`}
                       </span>
                     </p>
                     <p className="truncate text-sm text-ink-soft">

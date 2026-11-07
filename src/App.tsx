@@ -15,6 +15,8 @@ const TripsPage = lazy(() => import('./pages/trips/TripsPage'))
 const NewTripPage = lazy(() => import('./pages/trips/NewTripPage'))
 const TripPage = lazy(() => import('./pages/trips/TripPage'))
 const SearchPage = lazy(() => import('./pages/SearchPage'))
+const HubPage = lazy(() => import('./pages/hub/HubPage'))
+const HubScanPage = lazy(() => import('./pages/hub/HubScanPage'))
 const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
 const PaymentReturnPage = lazy(() => import('./pages/PaymentReturnPage'))
 const MockWhishPage = lazy(() => import('./pages/MockWhishPage'))
@@ -47,6 +49,8 @@ export default function App() {
             <Route path="/trips/:tripId" element={<TripPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/payments" element={<PaymentsPage />} />
+            <Route path="/hub" element={<HubPage />} />
+            <Route path="/hub/scan/:token" element={<HubScanPage />} />
             <Route path="/payments/:escrowId/return" element={<PaymentReturnPage />} />
             <Route path="/payments/:escrowId/mock-whish" element={<MockWhishPage />} />
             <Route path="/admin/kyc" element={<RequireAdmin><AdminKycPage /></RequireAdmin>} />
